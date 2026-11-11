@@ -185,3 +185,52 @@ def test_recording_preferences_motion_token_and_snapshots(monkeypatch,tmp_path):
             assert viewer.get('/api/events/motion').status_code==200
             assert viewer.put(f'/api/cameras/{cid}',json=base).status_code==403
         assert a.post('/api/cameras',json={**base,'recording_mode':'off'}).status_code==201
+
+
+def test_storage_discovery_filters_system_and_busy_drives(monkeypatch):
+    from pinvr import storage
+    devices = [
+        {'name':'mmcblk0','path':'/dev/mmcblk0','type':'disk','tran':None,'rm':False,
+         'children':[{'path':'/dev/mmcblk0p2','type':'part','fstype':'ext4','uuid':'OS-UUID',
+                      'mountpoints':['/'],'ro':False}]},
+        {'name':'sda','path':'/dev/sda','type':'disk','tran':'usb','rm':False,'model':'USB HDD',
+         'children':[{'path':'/dev/sda1','type':'part','fstype':'ext4','uuid':'SAFE-USB-123',
+                      'mountpoints':[None],'size':2000000000000,'ro':False},
+                     {'path':'/dev/sda2','type':'part','fstype':'ext4','uuid':'BUSY-USB-123',
+                      'mountpoints':['/media/other'],'ro':False},
+                     {'path':'/dev/sda3','type':'part','fstype':'ntfs','uuid':'NTFS-USB-123',
+                      'mountpoints':[None],'ro':False}]}
+    ]
+    monkeypatch.setattr(storage,'_tree',lambda:devices)
+    monkeypatch.setattr(storage,'_run',lambda *args,**kwargs:type('Result',(),{'stdout':'/dev/mmcblk0p2'})())
+    items=storage.discover()
+    assert len(items)==1 and items[0]['uuid']=='SAFE-USB-123'
+    assert items[0]['device']=='/dev/sda1'
+
+
+def test_storage_setup_requires_admin_and_confirmation(monkeypatch,tmp_path):
+    from pinvr import main
+    monkeypatch.setattr(main,'DATA',tmp_path)
+    monkeypatch.setattr(main,'DB',tmp_path/'pinvr.db')
+    monkeypatch.setattr(main.storage,'discover',lambda:[{'uuid':'SAFE-USB-123','filesystem':'ext4','model':'USB HDD','size_bytes':10000,'device':'/dev/sda1','mounted':False}])
+    monkeypatch.setattr(main.storage,'configured',lambda:{'mounted':False,'details':''})
+    calls=[]
+    def fake_helper(argv,**kwargs):
+        calls.append(argv)
+        return type('Result',(),{'stdout':'{"ok":true,"message":"Mounted"}','returncode':0})()
+    monkeypatch.setattr(main.subprocess,'run',fake_helper)
+    with TestClient(app) as admin:
+        assert admin.get('/api/storage/drives').status_code==401
+        admin.post('/api/login',json={'username':'Admin','password':'raspberry'})
+        assert admin.get('/api/storage/drives').json()['drives'][0]['uuid']=='SAFE-USB-123'
+        body={'uuid':'SAFE-USB-123','current_password':'raspberry'}
+        assert admin.post('/api/storage/configure',json=body).status_code==403  # Missing same-origin header
+        assert admin.post('/api/storage/configure',json={**body,'current_password':'bad'},headers={'Origin':'http://testserver'}).status_code==403
+        good=admin.post('/api/storage/configure',json=body,headers={'Origin':'http://testserver'})
+        assert good.status_code==200 and good.json()['ok']
+        assert len(calls)==1 and calls[0][-1]=='SAFE-USB-123'
+        admin.post('/api/users',json={'username':'Readonly123','password':'ViewerPassword2026!'} )
+        with TestClient(app) as viewer:
+            viewer.post('/api/login',json={'username':'Readonly123','password':'ViewerPassword2026!'})
+            assert viewer.get('/api/storage/drives').status_code==403
+            assert viewer.post('/api/storage/configure',json=body,headers={'Origin':'http://testserver'}).status_code==403

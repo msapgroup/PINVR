@@ -12,7 +12,7 @@ $('#reminderLater').onclick=()=>{$('#passwordReminder').hidden=true};
 $('#reminderChange').onclick=$('#accountPassword').onclick=()=>showAuth(true);
 $('#cancelPasswordChange').onclick=()=>enter();
 $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'})}catch(e){}showAuth()});
-function showPage(p){if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers()}}
+function showPage(p){if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives()}}
 $$('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 async function getCameras(){try{cameras=await api('/api/cameras');if(!cameras.some(c=>c.id===selected))selected=cameras[0]?.id||null;render()}catch(e){toast(e.message)}}
 function render(){const find=cameras.find(c=>c.id===selected);$('#selectedName').textContent=find?.name||'No camera selected';$('#selectedIP').textContent=user?.role==='viewer'?'Hidden':find?.host||'—';$('#selectedState').textContent=find?(find.enabled?'Configured':'Disabled'):'—';$('#selectedRecording').textContent=user?.role==='viewer'?'Hidden':find?(find.active?'Active':find.recording?'Waiting':'Off'):'—';$('#totalCount').textContent=`(${cameras.length})`;$('#wallCount').textContent=`${cameras.length} camera profiles`;
@@ -64,6 +64,26 @@ $('#networkForm').addEventListener('submit',async e=>{e.preventDefault();const p
 async function loadUsers(){if(user?.role!=='admin')return;try{const members=await api('/api/users');$('#userList').innerHTML=members.map(m=>`<div class="user-row"><div><b>${escapeHTML(m.username)}</b><small>${m.role==='admin'?'Admin · Full Control':'Viewer · Live Cameras & Playback'}${m.must_change?' · Password change recommended':''}</small></div>${m.role==='viewer'?`<div class="actions"><button class="outline" data-user-reset="${escapeHTML(m.username)}">Reset Password</button><button class="outline" data-user-delete="${escapeHTML(m.username)}">Remove</button></div>`:'<span class="tag">Protected</span>'}</div>`).join('')}catch(e){toast(e.message)}}
 $('#viewerForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/users',{method:'POST',body:JSON.stringify({username:$('#viewerUsername').value.trim(),password:$('#viewerPassword').value})});$('#viewerForm').reset();toast('Viewer created; password-change recommendation will appear at login');await loadUsers()}catch(err){toast(err.message)}};
 $('#userList').onclick=async e=>{const reset=e.target.closest('[data-user-reset]'),del=e.target.closest('[data-user-delete]');if(reset){const name=reset.dataset.userReset;const pw=prompt('New temporary password for '+name+' (12+ characters):');if(pw===null)return;try{await api('/api/users/'+encodeURIComponent(name)+'/password',{method:'PUT',body:JSON.stringify({password:pw})});toast('Password reset; viewer sessions revoked');await loadUsers()}catch(err){toast(err.message)}}if(del){const name=del.dataset.userDelete;if(!confirm('Remove viewer '+name+' and revoke their sessions?'))return;try{await api('/api/users/'+encodeURIComponent(name),{method:'DELETE'});toast('Viewer removed');await loadUsers()}catch(err){toast(err.message)}}};
+async function loadStorageDrives(){
+ const select=$('#usbDrive');
+ $('#driveSetupStatus').textContent='Checking connected USB drives…';
+ try{
+  const data=await api('/api/storage/drives');
+  select.innerHTML='<option value="">Select a USB drive</option>'+data.drives.map(d=>`<option value="${escapeHTML(d.uuid)}">${escapeHTML(d.model||'USB Drive')} · ${(d.size_bytes/1e9).toFixed(0)} GB · ${escapeHTML(d.filesystem)} · ${escapeHTML(d.device)}${d.mounted?' (already mounted)':''}</option>`).join('');
+  $('#driveSetupStatus').textContent=data.current.mounted?'Recording drive mounted. '+data.current.details:data.drives.length?data.drives.length+' available drive(s)':'No supported free USB drives found';
+ }catch(e){select.innerHTML='<option value="">Storage scan unavailable</option>';$('#driveSetupStatus').textContent=e.message;}
+}
+$('#scanDrives').onclick=loadStorageDrives;
+$('#driveSetupForm').onsubmit=async e=>{
+ e.preventDefault();const selectedOption=$('#usbDrive').selectedOptions[0];
+ if(!$('#usbDrive').value)return toast('Select a USB drive first');
+ if(!confirm('Set up '+selectedOption.textContent+' as the PiNVR recording drive? No files will be formatted or erased.'))return;
+ const btn=$('#driveSetupForm button[type="submit"]');btn.disabled=true;
+ try{
+  const res=await api('/api/storage/configure',{method:'POST',body:JSON.stringify({uuid:$('#usbDrive').value,current_password:$('#driveAdminPassword').value})});
+  $('#driveAdminPassword').value='';$('#driveConfirm').checked=false;toast(res.message);await loadStorageDrives();await loadStatus();
+ }catch(err){toast('USB setup: '+err.message)}finally{btn.disabled=false}
+};
 $('#changeButton').onclick=()=>showAuth(true);
 start();
 })();

@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion
+from pinvr import relay, motion, storage
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -508,6 +508,43 @@ def update_network_settings(body:NetworkPort, u=Depends(require_admin)):
         db.execute("INSERT OR REPLACE INTO settings(key,value) VALUES ('web_port',?)",(str(body.port),))
     schedule_restart()
     return {'port':body.port,'previous_port':old,'restarting':True}
+
+
+class StorageSelection(BaseModel):
+    uuid: str = Field(min_length=3, max_length=128)
+    current_password: str
+
+
+@app.get('/api/storage/drives')
+def storage_drives(u=Depends(require_admin)):
+    try:
+        return {'drives': storage.discover(), 'current': storage.configured()}
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc))
+
+
+@app.post('/api/storage/configure')
+def configure_storage(body: StorageSelection, request: Request, u=Depends(require_admin)):
+    # Require an authenticated Admin, re-entry of their password, and same-origin browser requests.
+    origin = request.headers.get('origin')
+    if not origin or origin.rstrip('/') != str(request.base_url).rstrip('/'):
+        raise HTTPException(403, 'Use the PiNVR web interface to configure storage')
+    with connect() as db:
+        account = db.execute('SELECT hash FROM users WHERE name=?', (u['name'],)).fetchone()
+    if not account or not verify(body.current_password, account['hash']):
+        raise HTTPException(403, 'Administrator password incorrect')
+    if not storage.UUID_PATTERN.fullmatch(body.uuid):
+        raise HTTPException(422, 'Invalid drive identifier')
+    # The helper must be root-owned, installed by install.sh, with one sudoers command.
+    try:
+        result = subprocess.run(['sudo', '-n', '/usr/local/libexec/pinvr-storage-helper', body.uuid],
+                                capture_output=True, text=True, timeout=35)
+        payload = json.loads(result.stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        raise HTTPException(503, 'Storage setup helper unavailable')
+    if result.returncode or not payload.get('ok'):
+        raise HTTPException(409, payload.get('error', 'Could not mount USB drive'))
+    return payload
 
 
 @app.get('/api/status')
