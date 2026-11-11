@@ -291,9 +291,17 @@ def reconcile():
 
 
 def recording_worker():
+    last_storage_warning = 0.0
     while not STOP.wait(15):
-        try: reconcile()
-        except Exception: pass
+        try:
+            reconcile()
+            with connect() as db:
+                any_recording = db.execute('SELECT 1 FROM cameras WHERE recording=1 AND enabled=1 LIMIT 1').fetchone()
+            if any_recording and not is_recording_mounted() and time.monotonic()-last_storage_warning > 3600:
+                last_storage_warning=time.monotonic()
+                alert_destinations('storage')
+        except Exception:
+            pass
 
 
 @asynccontextmanager
