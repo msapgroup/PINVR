@@ -1,7 +1,7 @@
 (()=>{'use strict';
 const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
 const phoneLayout=()=>window.matchMedia('(max-width:680px)').matches;
-let cameras=[],selected=null,layout=phoneLayout()?4:12,group='all',focused=false,user=null,changing=false,liveRelay=false;let peers=[];let talkPeer=null,talkStream=null,talkAttempt=0,talkHeld=false,talkCameraId=null;
+let cameras=[],selected=null,layout=phoneLayout()?4:12,group='all',focused=false,user=null,changing=false,liveRelay=false;let peers=[];let talkPeer=null,talkStream=null,talkAttempt=0,talkHeld=false,talkCameraId=null,listenEnabled=false,listenCameraId=null;
 const escapeHTML=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(url,opts={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.detail||`HTTP ${r.status}`);return body;}
 let toastTimer;function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').style.display='none',3500)}
@@ -13,12 +13,12 @@ $('#reminderLater').onclick=()=>{$('#passwordReminder').hidden=true};
 $('#reminderChange').onclick=$('#accountPassword').onclick=()=>showAuth(true);
 $('#cancelPasswordChange').onclick=()=>enter();
 $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'})}catch(e){}showAuth()});
-function showPage(p){stopTalking();if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives()}}
+function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives()}}
 $('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 $('[data-mobile-page]').forEach(b=>b.addEventListener('click',()=>{showPage(b.dataset.mobilePage);window.scrollTo({top:0,behavior:'instant'})}));
 if(phoneLayout()){$('[data-layout]').forEach(x=>x.classList.toggle('active',Number(x.dataset.layout)===4));}
 async function getCameras(){try{cameras=await api('/api/cameras');if(!cameras.some(c=>c.id===selected))selected=cameras[0]?.id||null;render()}catch(e){toast(e.message)}}
-function render(){const find=cameras.find(c=>c.id===selected);if(talkCameraId!==null&&talkCameraId!==selected)stopTalking();const canTalk=!!find?.talk_enabled&&(user?.role==='admin'||!!user?.talk_allowed);$('#talkPanel').hidden=!canTalk;if(canTalk)$('#talkHint').textContent='Hold to speak through '+find.name+'. Compatible camera and HTTPS required.';$('#selectedName').textContent=find?.name||'No camera selected';$('#selectedIP').textContent=user?.role==='viewer'?'Hidden':find?.host||'—';$('#selectedState').textContent=find?(find.enabled?'Configured':'Disabled'):'—';$('#selectedRecording').textContent=user?.role==='viewer'?'Hidden':find?(find.active?'Active':find.recording?'Waiting':'Off'):'—';$('#totalCount').textContent=`(${cameras.length})`;$('#wallCount').textContent=`${cameras.length} camera profiles`;
+function render(){const find=cameras.find(c=>c.id===selected);if(talkCameraId!==null&&talkCameraId!==selected)stopTalking();if(listenEnabled&&listenCameraId!==selected)setListening(false);const canTalk=!!find?.talk_enabled&&(user?.role==='admin'||!!user?.talk_allowed);$('#talkPanel').hidden=!canTalk;if(!canTalk&&listenEnabled)setListening(false);if(canTalk)$('#talkHint').textContent='Hold to speak through '+find.name+'. Compatible camera and HTTPS required.';$('#selectedName').textContent=find?.name||'No camera selected';$('#selectedIP').textContent=user?.role==='viewer'?'Hidden':find?.host||'—';$('#selectedState').textContent=find?(find.enabled?'Configured':'Disabled'):'—';$('#selectedRecording').textContent=user?.role==='viewer'?'Hidden':find?(find.active?'Active':find.recording?'Waiting':'Off'):'—';$('#totalCount').textContent=`(${cameras.length})`;$('#wallCount').textContent=`${cameras.length} camera profiles`;
 const q=$('#search').value.trim().toLowerCase();$('#tree').innerHTML=cameras.filter(c=>c.name.toLowerCase().includes(q)).map(c=>`<button class="resource child ${c.id===selected?'active':''}" data-select="${c.id}"><i class="dot"></i> ${escapeHTML(c.name)}</button>`).join('');
 const visible=cameras.filter(c=>group==='all'||c.group===group).slice(0,layout);let list=focused?cameras.filter(c=>c.id===selected):visible;const cols=focused?1:phoneLayout()?(layout===1?1:2):(layout===1?1:layout===4?2:layout===9?3:4);$('#cameraGrid').style.gridTemplateColumns=`repeat(${cols},minmax(0,1fr))`;$('#cameraGrid').classList.toggle('single-camera',focused||layout===1);$('#cameraGrid').innerHTML=list.length?list.map(c=>`<button class="camera ${c.id===selected?'selected':''}" data-select="${c.id}" ${focused?'style="aspect-ratio:16/8;max-height:460px"':''}><span class="camicon">▣</span><video class="livevideo" data-feed="${c.id}" muted autoplay playsinline></video><span class="name"><span><i class="dot"></i> ${escapeHTML(c.name)}</span><span class="rec">${user?.role==='viewer'?'LIVE':c.active?'● REC':'RTSP'}</span></span><span class="camfoot"><span>CH ${c.id}</span><span>No live preview</span></span></button>`).join(''):'<div class="card"><h3>No cameras configured</h3><p>Add an RTSP camera under Devices to start continuous recording.</p></div>';
 if(liveRelay && $('#page-live').classList.contains('active'))startLiveFeeds();
@@ -49,7 +49,10 @@ async function startLiveFeeds(){
  for(const video of items){
    const cid=Number(video.dataset.feed);const pc=new RTCPeerConnection({iceServers:[]});peers.push(pc);
    pc.addTransceiver('video',{direction:'recvonly'});
-   pc.ontrack=e=>{video.srcObject=e.streams[0]||new MediaStream([e.track]);video.play().catch(()=>{});};
+   const playAudio=listenEnabled&&focused&&cid===selected;
+   if(playAudio)pc.addTransceiver('audio',{direction:'recvonly'});
+   video.muted=!playAudio;
+   pc.ontrack=e=>{const stream=video.srcObject instanceof MediaStream?video.srcObject:new MediaStream();if(!stream.getTracks().some(t=>t.id===e.track.id))stream.addTrack(e.track);video.srcObject=stream;video.play().catch(()=>{if(playAudio)toast('Tap Listen again to allow audio playback.');});};
    try{
      await pc.setLocalDescription(await pc.createOffer());
      if(pc.iceGatheringState!=='complete') await new Promise(resolve=>{const timer=setTimeout(resolve,1800);pc.addEventListener('icegatheringstatechange',()=>{if(pc.iceGatheringState==='complete'){clearTimeout(timer);resolve();}})});
@@ -87,6 +90,16 @@ $('#driveSetupForm').onsubmit=async e=>{
   $('#driveAdminPassword').value='';$('#driveConfirm').checked=false;toast(res.message);await loadStorageDrives();await loadStatus();
  }catch(err){toast('USB setup: '+err.message)}finally{btn.disabled=false}
 };
+
+function setListening(enabled){
+  listenEnabled=enabled;
+  listenCameraId=enabled?selected:null;
+  $('#listenButton').textContent=enabled?'◖ Stop listening':'◖ Listen';
+  $('#listenButton').setAttribute('aria-pressed',String(enabled));
+  if(enabled){focused=true;render();}
+  else if($('#page-live').classList.contains('active'))startLiveFeeds();
+}
+$('#listenButton').addEventListener('click',()=>setListening(!listenEnabled));
 
 /* Microphone is used only while the button is pressed. */
 function talkStatus(message){$('#talkState').textContent=message;$('#talkButton').classList.toggle('transmitting',message==='Transmitting…')}
