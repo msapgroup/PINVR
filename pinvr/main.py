@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion, storage, rtsp_test
+from pinvr import relay, motion, storage, rtsp_test, notifications
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -71,6 +71,7 @@ def init_db():
         db.execute('CREATE TABLE IF NOT EXISTS motion_tokens (camera_id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS motion_events (id INTEGER PRIMARY KEY, camera_id INTEGER NOT NULL, created_at INTEGER NOT NULL, clip_name TEXT, snapshot_count INTEGER DEFAULT 0)')
         db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS alert_destinations (id INTEGER PRIMARY KEY, label TEXT NOT NULL, url TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, events TEXT NOT NULL DEFAULT \'motion\', cooldown_seconds INTEGER NOT NULL DEFAULT 120)')
         db.execute("INSERT OR IGNORE INTO settings(key,value) VALUES ('web_port','8080')")
         db.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, username TEXT, expires INTEGER NOT NULL)')
         db.execute('CREATE TABLE IF NOT EXISTS clips (id INTEGER PRIMARY KEY, camera_id INTEGER, filename TEXT UNIQUE NOT NULL, started_at INTEGER NOT NULL, bytes INTEGER DEFAULT 0)')
@@ -124,6 +125,34 @@ def schedule_restart():
     timer = threading.Timer(2.0, lambda: os.kill(os.getpid(), signal.SIGTERM))
     timer.daemon = True
     timer.start()
+
+
+class AlertDestination(BaseModel):
+    label: str = Field(min_length=1, max_length=60)
+    url: str = Field(min_length=8, max_length=2048)
+    enabled: bool = True
+    motion: bool = True
+    storage: bool = False
+    cooldown_seconds: int = Field(default=120, ge=30, le=3600)
+
+
+def public_alert_row(row):
+    return {
+        'id': row['id'],
+        'label': row['label'],
+        'provider': notifications.redact(row['url']),
+        'enabled': bool(row['enabled']),
+        'motion': 'motion' in row['events'].split(','),
+        'storage': 'storage' in row['events'].split(','),
+        'cooldown_seconds': row['cooldown_seconds'],
+        'configured': True,
+    }
+
+
+def alert_destinations(event_type, camera_name=None):
+    with connect() as db:
+        rows = [dict(r) for r in db.execute('SELECT * FROM alert_destinations WHERE enabled=1')]
+    notifications.dispatch(rows, event_type, camera_name)
 
 
 class NetworkPort(BaseModel):
@@ -519,6 +548,66 @@ def delete_viewer(username:str,u=Depends(require_admin)):
     return {'ok':True}
 
 
+@app.get('/api/alerts/destinations')
+def list_alert_destinations(u=Depends(require_admin)):
+    with connect() as db:
+        return [public_alert_row(r) for r in db.execute('SELECT * FROM alert_destinations ORDER BY id')]
+
+
+@app.post('/api/alerts/destinations',status_code=201)
+def add_alert_destination(body:AlertDestination,u=Depends(require_admin)):
+    try:
+        notifications.validate_url(body.url)
+    except ValueError as e:
+        raise HTTPException(422,str(e))
+    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage)) if allowed)
+    if not events:
+        raise HTTPException(422,'Choose at least one alert type')
+    with connect() as db:
+        cur=db.execute('INSERT INTO alert_destinations(label,url,enabled,events,cooldown_seconds) VALUES (?,?,?,?,?)',
+                       (body.label,body.url,int(body.enabled),events,body.cooldown_seconds))
+        row=db.execute('SELECT * FROM alert_destinations WHERE id=?',(cur.lastrowid,)).fetchone()
+    return public_alert_row(row)
+
+
+@app.put('/api/alerts/destinations/{dest_id}')
+def update_alert_destination(dest_id:int, body:AlertDestination,u=Depends(require_admin)):
+    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage)) if allowed)
+    if not events:
+        raise HTTPException(422,'Choose at least one alert type')
+    with connect() as db:
+        prior=db.execute('SELECT * FROM alert_destinations WHERE id=?',(dest_id,)).fetchone()
+        if not prior:
+            raise HTTPException(404,'Alert destination not found')
+        url=body.url if body.url!='KEEP_EXISTING' else prior['url']
+        try:
+            notifications.validate_url(url)
+        except ValueError as e:
+            raise HTTPException(422,str(e))
+        db.execute('UPDATE alert_destinations SET label=?,url=?,enabled=?,events=?,cooldown_seconds=? WHERE id=?',
+                   (body.label,url,int(body.enabled),events,body.cooldown_seconds,dest_id))
+        result=db.execute('SELECT * FROM alert_destinations WHERE id=?',(dest_id,)).fetchone()
+    return public_alert_row(result)
+
+
+@app.delete('/api/alerts/destinations/{dest_id}')
+def delete_alert_destination(dest_id:int,u=Depends(require_admin)):
+    with connect() as db:
+        if not db.execute('DELETE FROM alert_destinations WHERE id=?',(dest_id,)).rowcount:
+            raise HTTPException(404,'Alert destination not found')
+    return {'ok':True}
+
+
+@app.post('/api/alerts/destinations/{dest_id}/test')
+def test_alert_destination(dest_id:int,u=Depends(require_admin)):
+    with connect() as db:
+        row=db.execute('SELECT url FROM alert_destinations WHERE id=?',(dest_id,)).fetchone()
+    if not row:raise HTTPException(404,'Alert destination not found')
+    result=notifications.send_test(row['url'])
+    if not result['ok']:raise HTTPException(502,result['message'])
+    return result
+
+
 @app.get('/api/network')
 def network_settings(u=Depends(require_admin)):
     return {'port':configured_port(), 'managed':os.environ.get('PINVR_MANAGED')=='1',
@@ -725,6 +814,7 @@ def trigger_motion(cid:int):
         if now-MOTION_GUARD.get(cid,-1000)<20:
             raise HTTPException(429,'Event cooldown active; retry in 20 seconds')
         MOTION_GUARD[cid]=now
+    alert_destinations('motion', camera.get('name'))
     threading.Thread(target=_capture_motion_event,args=(camera,),daemon=True).start()
     return {'ok':True,'camera_id':cid,'status':'capturing','snapshot_count':camera['snapshot_count']}
 
