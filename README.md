@@ -4,7 +4,7 @@
 
 **Native Raspberry Pi NVR + iPhone/Android mobile web app**, styled as a dark professional security console. Designed initially for Raspberry Pi 4 (4 GB RAM), 9+ RTSP cameras and external USB recording storage. **No Docker.**
 
-> **Development status: early working alpha.** Login, recurring password-change recommendation, RTSP camera configuration, FFmpeg stream-copy recording to mounted USB storage, recorded MP4/MKV listing, JPG snapshots and browser playback, and responsive PWA UI are implemented. WebRTC live streaming is now wired through go2rtc but requires live camera and Raspberry Pi testing. ONVIF discovery and authenticated motion-event webhooks are implemented. ONVIF motion-event subscriptions, PTZ, mobile push notifications, and measured latency/FPS **still require implementation or on-device testing**. Do not replace a production NVR until tested on your camera hardware.
+> **Development status: early working alpha.** Login, recurring password-change recommendation, RTSP camera configuration, FFmpeg stream-copy recording to mounted USB storage, recorded MP4/MKV listing, JPG snapshots and browser playback, and responsive PWA UI are implemented. WebRTC live streaming is now wired through go2rtc but requires live camera and Raspberry Pi testing. ONVIF discovery and authenticated motion-event webhooks are implemented. ONVIF motion-event subscriptions, PTZ, verified camera talkback, mobile push notifications, and measured latency/FPS **still require implementation or on-device testing**. Do not replace a production NVR until tested on your camera hardware.
 
 ## Screenshots & how to use
 
@@ -25,6 +25,8 @@
 | Mobile — Sign In | ![Phone Login](screenshots/mobile-login-new.jpg) | Full-width touch-friendly sign-in form. |
 | Mobile (earlier desktop-responsive view) | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
 | USB Storage Setup | ![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png) | Admin scans supported external USB drives, chooses one and confirms; PiNVR mounts it and makes the mount persistent without Linux commands or formatting. |
+| Two-way audio — mobile | ![Mobile Talk](screenshots/mobile-push-to-talk.jpg) | Hold **Talk** to transmit microphone audio to a compatible camera speaker; tap **Listen** to enable camera audio in a focused stream. HTTPS and a supported audio backchannel are required. The sample screenshot uses demo cameras, not a real connected speaker. |
+| Two-way audio — Admin permissions | ![Viewer Talk Permissions](screenshots/desktop-viewer-talk-permissions.jpg) | Enable two-way audio per camera, then optionally grant **Allow Talk** to selected Viewer accounts (disabled by default). The screenshot illustrates the settings layout with demo accounts. |
 | Network Access | ![Network Access settings](screenshots/desktop-network.jpg) | Change the web listening port, view VPN guidance and understand router external-to-internal mappings. |
 | Login | ![Login](screenshots/login.jpg) | Sign in as Admin or Viewer. A dismissible security reminder appears on each login until the password is changed. |
 
@@ -204,6 +206,23 @@ A recording format change affects **new files**; previously recorded MP4/MKV fil
 - For remote VPN access, use unique passwords and restrict network access. Allowing the public default password to remain active increases risk, even over a VPN.
 
 ![Viewer mobile view](screenshots/mobile-viewer.jpg)
+
+### Two-way audio — Listen & Hold to Talk (camera-dependent)
+
+![PiNVR mobile push-to-talk example](screenshots/mobile-push-to-talk.jpg)
+
+PiNVR now includes **opt-in browser microphone signaling** through the local go2rtc relay. This is intended for cameras whose speakers accept an RTSP/ONVIF Profile T audio backchannel or a supported vendor-specific go2rtc protocol. **Not every RTSP camera supports talkback**, even if it has a speaker, and this feature is **not yet hardware-tested on your cameras**. The screenshots use example camera profiles and illustrated controls, not verified audio transmission.
+
+1. **Admin enables the camera:** Open **Cameras → Edit** on a camera with a speaker and supported two-way audio. Check **Enable two-way audio for this camera** and save. Only cameras with this option enabled show the Talk controls. The setting defaults to **off**.
+2. **Optional Viewer permission:** Open **Settings → Users & Permissions**. New Viewer accounts have Talk **disabled** by default. Check **Allow this Viewer to speak** when creating an account, or use **Allow Talk / Disable Talk** next to an existing Viewer. Server-side checks protect microphone signaling; hiding the button is not the only restriction. Viewers without Talk permission retain Live and Playback.
+3. **Open the phone interface over HTTPS:** Browser microphone access requires a trusted **HTTPS** site or the browser's local secure-context exception. An HTTP URL over a VPN **does not automatically count as secure**. Use an HTTPS reverse proxy (or your VPN's supported HTTPS serving feature) so Safari/Chrome can request microphone permission. Keep go2rtc port 8555 reachable privately over the VPN; **do not publicly forward PiNVR ports**.
+4. **Listen:** Select the camera, tap **Listen** to focus it and enable incoming audio, and tap again to stop listening. Your camera must have a compatible microphone/audio stream.
+5. **Speak:** Press and **hold Talk**. Grant microphone access when prompted. PiNVR opens a WebRTC audio-sending session to the selected camera's go2rtc main stream. Release your finger, leave the page, or lose focus to close the talk connection and stop microphone capture. Talk does **not** turn on automatically in the background.
+6. **Troubleshooting:** If Talk shows an unsupported-camera or negotiation error, verify camera speaker firmware, RTSP backchannel support, matching codecs and its go2rtc stream profile. Some Hikvision intercoms require an ISAPI-specific go2rtc source; that vendor-specific setup is not automated yet. Use headphones when possible to avoid audio feedback.
+
+![Admin Viewer Talk permissions](screenshots/desktop-viewer-talk-permissions.jpg)
+
+**Status:** Access controls and the WebRTC microphone signaling integration are implemented and covered by permission tests; **successful speaker output, latency and compatibility must still be measured with real supported cameras and actual phones**. Disabling permission blocks new Talk sessions; an existing connection ends when its hold action is released or its WebRTC connection closes. Camera audio playback is similarly dependent on the stream's actual audio track.
 
 ### Android and iPhone — browser and home-screen access
 
