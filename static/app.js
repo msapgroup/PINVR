@@ -27,10 +27,43 @@ $('#deviceList').innerHTML=user?.role==='viewer'?'':cameras.map(c=>`<div class="
 $('#search').addEventListener('input',render);document.addEventListener('click',e=>{const b=e.target.closest('[data-select]');if(b){selected=Number(b.dataset.select);render()}});
 $$('[data-layout]').forEach(b=>b.addEventListener('click',()=>{layout=Number(b.dataset.layout);focused=false;$$('[data-layout]').forEach(x=>x.classList.toggle('active',x===b));render()}));
 $('#focus').onclick=()=>{focused=!focused;render()};$('#showAll').onclick=()=>{focused=false;render()};$('#refresh').onclick=getCameras;$('#cameraRefresh').onclick=getCameras;
-function openEditor(id=null){const c=cameras.find(x=>x.id===id);$('#editor').hidden=false;$('#cameraId').value=c?.id||'';$('#editHeading').textContent=c?'Edit '+c.name:'Add camera';$('#camName').value=c?.name||'';$('#camHost').value=c?.host||'';$('#camUser').value=c?.username||'';$('#camPassword').value='';$('#camMain').value=c?.main_path||'/Streaming/Channels/101';$('#camSub').value=c?.sub_path||'/Streaming/Channels/102';$('#camRecord').checked=c?.recording||false;$('#camTalkEnabled').checked=!!c?.talk_enabled;$('#camMode').value=c?.recording_mode||'continuous';$('#camFormat').value=c?.record_format||'mp4';$('#camSnapshots').value=String(c?.snapshot_count||1);$('#camEnabled').checked=c?.enabled??true;showPage('devices');$('#editor').scrollIntoView({behavior:'smooth',block:'nearest'})}
+function openEditor(id=null){const c=cameras.find(x=>x.id===id);$('#rtspTestResults').textContent='Enter camera details, then select Test RTSP Connection. No settings will be saved.';$('#editor').hidden=false;$('#cameraId').value=c?.id||'';$('#editHeading').textContent=c?'Edit '+c.name:'Add camera';$('#camName').value=c?.name||'';$('#camHost').value=c?.host||'';$('#camUser').value=c?.username||'';$('#camPassword').value='';$('#camMain').value=c?.main_path||'/Streaming/Channels/101';$('#camSub').value=c?.sub_path||'/Streaming/Channels/102';$('#camRecord').checked=c?.recording||false;$('#camTalkEnabled').checked=!!c?.talk_enabled;$('#camMode').value=c?.recording_mode||'continuous';$('#camFormat').value=c?.record_format||'mp4';$('#camSnapshots').value=String(c?.snapshot_count||1);$('#camEnabled').checked=c?.enabled??true;showPage('devices');$('#editor').scrollIntoView({behavior:'smooth',block:'nearest'})}
 $('#addSide').onclick=()=>openEditor();$('#addCamera').onclick=()=>openEditor();$('#closeEditor').onclick=$('#cancelEdit').onclick=()=>{$('#editor').hidden=true};$('#openCameraEdit').onclick=()=>selected?openEditor(selected):toast('Select a camera first');
 $('#deviceList').onclick=async e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)openEditor(Number(edit.dataset.edit));if(del&&confirm('Delete camera profile? Existing recordings will be kept.')){try{await api('/api/cameras/'+del.dataset.delete,{method:'DELETE'});toast('Camera removed');await getCameras()}catch(e){toast(e.message)}}};
 $('#cameraForm').onsubmit=async e=>{e.preventDefault();const id=$('#cameraId').value;const cam={name:$('#camName').value.trim(),host:$('#camHost').value.trim(),username:$('#camUser').value.trim(),password:$('#camPassword').value,main_path:$('#camMain').value.trim(),sub_path:$('#camSub').value.trim(),recording:$('#camRecord').checked,recording_mode:$('#camMode').value,record_format:$('#camFormat').value,snapshot_count:Number($('#camSnapshots').value),talk_enabled:$('#camTalkEnabled').checked,enabled:$('#camEnabled').checked};try{await api('/api/cameras'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(cam)});$('#editor').hidden=true;await getCameras();toast('Camera saved')}catch(e){toast(e.message)}};
+
+/* Validate the current form without saving or changing any camera settings. */
+$('#testRtsp').onclick=async()=>{
+ const panel=$('#rtspTestResults'),button=$('#testRtsp');
+ const name=$('#camName').value.trim(),host=$('#camHost').value.trim();
+ const main=$('#camMain').value.trim(),sub=$('#camSub').value.trim();
+ if(!name||!host||!main||!sub){
+   panel.textContent='Enter the camera name, IP address and both stream paths first.';
+   return;
+ }
+ const camera={name,host,username:$('#camUser').value.trim(),password:$('#camPassword').value,
+   main_path:main,sub_path:sub,enabled:$('#camEnabled').checked};
+ const cameraId=Number($('#cameraId').value)||null;
+ button.disabled=true;button.textContent='⏳ Testing main and substreams…';
+ panel.textContent='Connecting to the camera from the Raspberry Pi. This may take up to 20 seconds. No settings will be saved.';
+ try{
+   const data=await api('/api/cameras/test-connection',{method:'POST',
+     body:JSON.stringify({camera,camera_id:cameraId})});
+   const results=data.streams||[];
+   panel.innerHTML='<strong class="'+(data.ok?'rtsp-success':'rtsp-warning')+'">'+
+      (data.ok?'✓ Both RTSP streams are reachable':'⚠ One or more streams need attention')+'</strong>'+
+      results.map(r=>'<div class="rtsp-stream-row"><div><strong>'+escapeHTML(r.stream==='main'?'Main Stream':'Substream')+
+       '</strong><span class="'+(r.ok?'rtsp-success':'rtsp-warning')+'">'+(r.ok?'✓ Connected':'✕ Not connected')+'</span></div>'+
+       (r.ok?'<small>'+escapeHTML(String(r.codec||'unknown').toUpperCase())+' · '+
+         escapeHTML(r.width&&r.height?r.width+' × '+r.height:'Unknown resolution')+
+         (r.fps?' · '+escapeHTML(r.fps)+' FPS':'')+
+         (r.audio?.length?' · audio: '+escapeHTML(r.audio.join(', ')):'')+
+         '</small>':'')+
+       '<p>'+escapeHTML(r.message||'')+'</p></div>').join('')+
+       '<p class="rtsp-help">This is a connection test only. No camera was saved and no recording was started.</p>';
+ }catch(err){panel.textContent='Test could not finish: '+err.message;}
+ finally{button.disabled=false;button.textContent='⌕ Test RTSP Connection'}
+};
 $('#discover').onclick=async()=>{toast('Searching local network for ONVIF cameras…');try{const info=await api('/api/onvif/discover');if(!info.devices.length){toast('No ONVIF cameras replied. You can add RTSP cameras manually.');return}alert(info.devices.map(d=>d.ip+'\n'+d.service_urls.join('\n')).join('\n\n'));}catch(e){toast(e.message)}};$('#ptzInfo').onclick=()=>toast('PTZ controls require ONVIF integration.');
 async function loadStatus(){try{let s=await api('/api/status');const changed=liveRelay!==!!s.live_relay;liveRelay=!!s.live_relay;if(changed)render();$('#ramValue').textContent=s.memory_mb?Math.round(s.memory_mb/1024*10)/10+' GB':'—';$('#tempValue').textContent=s.temperature_c===null?'—':s.temperature_c+' °C';$('#workersValue').textContent=s.recorders;$('#storageValue').textContent=s.storage_mounted?Math.round(s.storage_free/1e9)+' GB':'Not mounted';$('#mountWarning').hidden=s.storage_mounted;$('#connection').innerHTML='<i class="dot"></i> Connected';$('#liveNote').textContent=liveRelay?'WebRTC active. The first four visible streams use substreams. Select Focus for a full-resolution stream; remaining feeds load only when requested.':'go2rtc live relay is not running. Verify the native binary is installed and restart PiNVR.';}catch(e){toast(e.message)}}
 async function loadClips(){try{const id=$('#clipCamera').value;let clips=await api('/api/clips'+(id?'?camera_id='+id:''));$('#clipList').innerHTML=clips.length?clips.map(c=>{const name=cameras.find(x=>x.id===c.camera_id)?.name||'Camera '+c.camera_id;return `<button class="clip" data-clip="${c.camera_id}/${encodeURIComponent(c.name)}"><span>${escapeHTML(name)} — ${escapeHTML(c.name)}</span><span>${(c.size/1e6).toFixed(1)} MB ▷</span></button>`}).join(''):'<div class="card"><p>No recordings found yet. Enable recording on a camera and verify your USB drive is mounted.</p></div>'}catch(e){toast(e.message)}}
