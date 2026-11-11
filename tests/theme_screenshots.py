@@ -42,6 +42,8 @@ mock=mock.replace('CAMS',json.dumps(cams))
 with sync_playwright() as playwright:
     browser=playwright.chromium.launch(headless=True,args=['--no-sandbox'])
     desktop=browser.new_page(viewport={'width':1460,'height':890},device_scale_factor=1)
+    page_errors=[]
+    desktop.on('pageerror', lambda error: page_errors.append(str(error)))
     desktop.set_content(html)
     desktop.evaluate("document.documentElement.dataset.theme='red'")
     desktop.screenshot(path=str(OUT/'theme-red-login.png'),full_page=True)
@@ -49,7 +51,9 @@ with sync_playwright() as playwright:
     desktop.screenshot(path=str(OUT/'theme-blue-login.png'),full_page=True)
     desktop.evaluate(mock)
     desktop.add_script_tag(content=js)
-    desktop.locator('#console').wait_for(state='visible')
+    desktop.wait_for_timeout(900)
+    if not desktop.locator('#console').is_visible():
+        raise RuntimeError('PiNVR JavaScript did not open the dashboard: '+str(page_errors)+'; auth='+desktop.locator('#authError').inner_text())
     desktop.wait_for_timeout(300)
     for theme in ['red','blue']:
         desktop.evaluate("(theme)=>document.documentElement.dataset.theme=theme",theme)
