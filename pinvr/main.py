@@ -22,6 +22,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
+import httpx
+from pinvr import relay
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -190,8 +192,10 @@ async def lifespan(app):
     worker=threading.Thread(target=recording_worker, daemon=True)
     worker.start()
     reconcile()
+    with connect() as db: relay.restart_relay([dict(x) for x in db.execute('SELECT * FROM cameras')])
     yield
     STOP.set()
+    relay.stop_relay()
     with LOCK:
         for cid in list(PROCS):stop_recorder(cid)
 
@@ -282,6 +286,7 @@ def add_camera(cam:Camera,u=Depends(require_user)):
         cur=db.execute('INSERT INTO cameras(name,host,main_path,sub_path,username,password,recording,enabled,created_at) VALUES (?,?,?,?,?,?,?,?,?)',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password,int(cam.recording),int(cam.enabled),datetime.now(timezone.utc).isoformat()))
         cid=cur.lastrowid
     reconcile()
+    refresh_relay()
     return {'id':cid}
 
 
@@ -295,6 +300,7 @@ def edit_camera(cid:int,cam:Camera,u=Depends(require_user)):
             stop_recorder(cid)
             db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cid))
         reconcile()
+        refresh_relay()
     return {'id':cid}
 
 
@@ -304,6 +310,7 @@ def delete_camera(cid:int,u=Depends(require_user)):
         stop_recorder(cid)
         with connect() as db:
             if not db.execute('DELETE FROM cameras WHERE id=?',(cid,)).rowcount:raise HTTPException(404,'Camera not found')
+    refresh_relay()
     return {'ok':True,'note':'Recorded clips are preserved on disk'}
 
 
@@ -314,7 +321,7 @@ def status(u=Depends(require_user)):
     cpu_temp=None
     try: cpu_temp=round(int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())/1000,1)
     except (OSError,ValueError):pass
-    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
+    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
 
 
 @app.get('/api/clips')
@@ -340,3 +347,30 @@ def download_clip(cid:int,filename:str,u=Depends(require_user)):
     dest=RECORDINGS/str(cid)/filename
     if not dest.is_file():raise HTTPException(404,'Clip not found')
     return FileResponse(dest,media_type='video/mp4',filename=filename,content_disposition_type='inline')
+
+
+def refresh_relay():
+    with connect() as db:
+        relay.restart_relay([dict(x) for x in db.execute('SELECT * FROM cameras')])
+
+
+@app.post('/api/live/{cid}/offer')
+async def webrtc_offer(cid:int, request:Request, profile:str='sub', u=Depends(require_user)):
+    if profile not in ('sub','main'):
+        raise HTTPException(422,'Invalid stream profile')
+    if not relay.is_running():
+        raise HTTPException(503,'go2rtc relay unavailable')
+    with connect() as db:
+        cam=db.execute('SELECT id,enabled FROM cameras WHERE id=?',(cid,)).fetchone()
+    if not cam or not cam['enabled']:
+        raise HTTPException(404,'Camera unavailable')
+    offer=await request.body()
+    if not (0<len(offer)<65536):
+        raise HTTPException(413,'Invalid SDP size')
+    try:
+        async with httpx.AsyncClient(timeout=12.0,trust_env=False) as client:
+            resp=await client.post('http://127.0.0.1:1984/api/webrtc',params={'src':f'cam{cid}_{profile}'},content=offer,headers={'Content-Type':'application/sdp'})
+            resp.raise_for_status()
+    except httpx.HTTPError:
+        raise HTTPException(502,'Live relay could not negotiate stream') from None
+    return Response(resp.content,media_type='application/sdp')

@@ -4,13 +4,13 @@
 
 **Native Raspberry Pi NVR + iPhone/Android mobile web app**, styled as a dark professional security console. Designed initially for Raspberry Pi 4 (4 GB RAM), 9+ RTSP cameras and external USB recording storage. **No Docker.**
 
-> **Development status: early working alpha.** Login, first-login password change, RTSP camera configuration, FFmpeg stream-copy recording to mounted USB storage, recorded MP4 listing/playback, and responsive PWA UI are implemented. RTSP live browser viewing, ONVIF discovery, PTZ, motion notifications and measured latency/FPS are **not yet implemented**. Do not replace a production NVR until tested on your camera hardware.
+> **Development status: early working alpha.** Login, first-login password change, RTSP camera configuration, FFmpeg stream-copy recording to mounted USB storage, recorded MP4 listing/playback, and responsive PWA UI are implemented. WebRTC live streaming is now wired through go2rtc but requires live camera and Raspberry Pi testing. ONVIF discovery, PTZ, motion notifications and measured latency/FPS are **not yet implemented**. Do not replace a production NVR until tested on your camera hardware.
 
 ## Screenshots & how to use
 
 | Screen | Preview | What it does |
 | --- | --- | --- |
-| Desktop Live View | ![Live view](screenshots/desktop-live.jpg) | Camera tree, layout choices (1/4/9/12/16), focus selected camera, recording status. Live tiles are placeholders until the streaming bridge is implemented. |
+| Desktop Live View | ![Live view](screenshots/desktop-live.jpg) | Camera tree, layout choices (1/4/9/12/16), focus selected camera, recording status. WebRTC streams activate for up to four visible cameras at a time; clicking Focus loads the selected main stream. The documentation screenshots use example cameras and placeholders. |
 | Camera Management | ![Camera management](screenshots/desktop-cameras.jpg) | Add, edit and remove RTSP IP cameras; specify main/substream RTSP paths and enable recording. |
 | Playback | ![Playback](screenshots/desktop-playback.jpg) | Search recorded MP4 segments by camera and play/download clips. Requires recorded footage on mounted storage. |
 | Mobile | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
@@ -26,7 +26,7 @@ Install **Raspberry Pi OS Lite 64-bit** on Pi 4, and connect your cameras via wi
 sudo bash install.sh
 ```
 
-The installer sets up system Python virtualenv, FFmpeg and `pinvr.service` on port **8080**, with no Docker. Start at `http://<PI-IP>:8080` on your local network.
+The installer sets up system Python virtualenv, FFmpeg, SHA256-verified native go2rtc v1.9.15 ARM64 and `pinvr.service` on port **8080**, with no Docker. go2rtc management listens only on `127.0.0.1:1984`, and WebRTC media uses TCP/UDP `8555` on the private network. Do not forward either port to the public internet. Start at `http://<PI-IP>:8080` on your local network.
 
 **Initial credentials:** username `Admin`, password `raspberry`. You **must** change the password immediately after first login (minimum 12 characters). Never expose port 8080 directly to the public internet. Use an HTTPS reverse proxy and a VPN (WireGuard/Tailscale) for remote access.
 
@@ -75,6 +75,7 @@ Open the same PiNVR address in Chrome or Safari on your local network, then choo
 
 - **FastAPI + SQLite** — authenticated configuration, clip listing and status API.
 - **FFmpeg** — one `-c:v copy` worker per enabled camera with continuous recording.
+- **go2rtc v1.9.15** — native ARM64 video relay with authenticated WHEP signaling from PiNVR to loopback go2rtc, and direct WebRTC media on port 8555.
 - **USB mount safety** — block writes if the recording mount is absent.
 - **Responsive HTML/CSS/JavaScript** — dark Hikvision-inspired PiNVR UI (independent branding) for desktop/mobile.
 - **systemd** — native service, runs unprivileged as `pinvr`.
@@ -90,11 +91,11 @@ PINVR_DATA=/tmp/pinvr-dev PINVR_RECORDINGS=/tmp/pinvr-clips uvicorn pinvr.main:a
 pytest -q
 ```
 
-The default app refuses recording to an unmounted directory. `PINVR_ALLOW_LOCAL_RECORDINGS=1` is **test-only** and bypasses mount detection; never set it for a real deployment.
+The app can run locally without the go2rtc binary for camera management and recordings; live feeds require the binary. The default app refuses recording to an unmounted directory. `PINVR_ALLOW_LOCAL_RECORDINGS=1` is **test-only** and bypasses mount detection; never set it for a real deployment.
 
 ## Roadmap
 
-1. Integrate go2rtc native low-latency WebRTC viewer and substream camera wall, with authentication, secure proxying and load testing on a real Pi 4.
+1. Test and tune the new go2rtc WebRTC bridge, low-latency substreams and authentication on a physical Raspberry Pi 4 with 9–16 cameras. Add stream health/reconnect diagnostics and optimized camera-wall subscription.
 2. Implement ONVIF discovery and credential provisioning, PTZ and camera-native motion events.
 3. Disk usage limits, retention cleanup and failed-disk alerts.
 4. Multi-user accounts, encrypted camera secrets, login rate limiting, CSRF protections and HTTPS deployment.
