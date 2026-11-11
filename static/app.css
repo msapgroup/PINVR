@@ -9,3 +9,101 @@
 .password-reminder{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#31261f;border-bottom:1px solid #80533d;padding:11px 16px;color:#ffd6b2;font-size:12px}.password-reminder>div{display:flex;gap:6px;flex-wrap:wrap}.password-reminder .outline{padding:6px 9px;background:#312b29;border-color:#ad745c;color:#ffe5d3}@media(max-width:680px){.password-reminder{padding:9px;font-size:11px}}
 
 .snapshot-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:9px;margin:12px 0}.snapshot-gallery a{background:#1a222b;border:1px solid #384650;border-radius:5px;overflow:hidden;color:#dfe8f0;text-decoration:none}.snapshot-gallery img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}.snapshot-gallery small{display:block;padding:7px;overflow-wrap:anywhere;color:#a9b9c7}.network-card code{color:#ffb8bd}
+
+
+/* Phone-first PiNVR navigation and touch usability; desktop control room stays unchanged. */
+#mobileNav{display:none}
+.camera .livevideo{object-fit:contain}
+.camera:focus-visible,.tab:focus-visible,.mobile-tab:focus-visible{outline:2px solid #ff7b85;outline-offset:-2px}
+@media(max-width:680px){
+  html{scroll-padding-bottom:96px}
+  body{overflow-x:hidden}
+  .header{position:sticky;top:0;z-index:12;display:flex;align-items:center;min-height:58px;padding:8px 12px;padding-top:max(8px, env(safe-area-inset-top));gap:8px;background:#11171e}
+  .header .brand{font-size:19px;min-width:0}
+  .header .brand small{font-size:9px;margin-left:3px}
+  .header nav#topnav{display:none}
+  .headstatus{position:static;margin-left:auto;gap:8px}
+  .headstatus #connection{display:none}
+  .headstatus #signedInName{font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis}
+  .headstatus button{display:grid;place-items:center;min-width:40px;min-height:44px;border-radius:6px}
+  #accountPassword{display:none!important}
+  .password-reminder{padding:12px;align-items:stretch;font-size:12px}
+  .password-reminder>div{width:100%}
+  .password-reminder button{min-height:44px;flex:1}
+  #console{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+  #mobileNav{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:20;align-items:stretch;justify-content:space-around;gap:3px;background:#141a23;border-top:1px solid #3a444f;padding:7px 6px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -7px 24px #0009}
+  #mobileNav .mobile-tab{border:0;background:transparent;color:#aebac7;display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;min-width:0;min-height:53px;border-radius:7px;padding:6px 2px}
+  #mobileNav .mobile-tab .mobile-icon{font-size:18px;line-height:1.2}
+  #mobileNav .mobile-tab.active{color:#fff;background:#542731;box-shadow:inset 0 2px #fa6570}
+  #mobileNav .mobile-tab[hidden]{display:none!important}
+  .workbench{display:block;min-height:0}
+  .resources{padding:10px 12px;background:#10161d;display:flex;gap:8px;align-items:center;flex-wrap:wrap;overflow:visible}
+  .resources #search{max-width:none;min-width:0;flex:1 1 140px;margin:0;height:44px}
+  .resources .resource[data-group="all"]{display:flex;align-items:center;justify-content:center;min-height:44px;min-width:118px;width:auto;padding:8px 10px}
+  .resources #tree{display:none}
+  .resources .add{display:none}
+  .center{padding:11px}
+  .sectiontitle{align-items:flex-start;flex-wrap:wrap;gap:9px;font-size:14px}
+  .sectiontitle .actions{flex-wrap:wrap;width:100%}
+  .sectiontitle .actions button{flex:1;min-height:44px}
+  .camera-grid{gap:7px}
+  .camera{aspect-ratio:16/11;border-radius:7px;touch-action:manipulation;min-height:100px}
+  .camera .name{font-size:10px;top:6px;left:6px;right:6px}
+  .camera .camfoot{font-size:9px;left:6px;right:6px}
+  .camera .camicon{font-size:27px}
+  .camera .rec{font-size:9px}
+  .walltools{gap:9px;padding:9px;align-items:stretch;flex-wrap:wrap}
+  .layoutbuttons{width:100%;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+  .layoutbuttons button{min-height:44px;min-width:0;padding:8px 2px}
+  .toolbuttons{display:flex;justify-content:space-between;gap:7px;width:100%}
+  .toolbuttons button{min-height:44px;flex:1}
+  .note{font-size:11px;line-height:1.55}
+  .card{padding:12px;overflow-wrap:anywhere}
+  .filters{display:grid;grid-template-columns:1fr;gap:10px;align-items:stretch}
+  .filters select{max-width:none;min-height:46px}
+  .filters button{min-height:46px}
+  .playbox{height:auto;aspect-ratio:16/10;min-height:205px;max-height:340px}
+  .playbox video{max-width:100%}
+  .timeline{gap:8px}
+  .clip{min-height:54px;gap:8px;align-items:flex-start;overflow-wrap:anywhere}
+  .clip span:first-child{min-width:0;overflow-wrap:anywhere}
+  .clip span:last-child{flex-shrink:0;font-size:11px}
+  .snapshot-gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .formgrid{grid-template-columns:minmax(0,1fr);gap:13px}
+  .formgrid label{min-width:0}
+  .formgrid input:not([type="checkbox"]),.formgrid select,.networkform input{min-height:44px}
+  .formfooter{display:flex;flex-wrap:wrap;gap:8px}
+  .formfooter button{min-height:44px;flex:1}
+  .device-card{overflow:hidden}
+  .tablehead{display:none}
+  .devicerow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:13px 2px}
+  .devicerow>div:first-child{flex:1 1 130px;min-width:0;overflow-wrap:anywhere}
+  .devicerow>div:last-child{display:flex;gap:5px}
+  .devicerow button{min-height:44px;min-width:54px}
+  .user-row{align-items:flex-start;flex-wrap:wrap}
+  .user-row .actions{width:100%}
+  .user-row .actions button{min-height:44px;flex:1}
+  .statusgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .networkform{grid-template-columns:minmax(0,1fr)}
+  .networkform button{min-height:46px}
+  .network-example code{overflow-wrap:anywhere}
+  .auth{min-height:100dvh;padding:16px 12px calc(20px + env(safe-area-inset-bottom))}
+  .auth-card{padding:22px 18px;max-width:440px}
+  .auth-card input,.auth-card button{min-height:46px}
+  .recorder{display:none}
+  #toast{left:12px;right:12px;bottom:calc(86px + env(safe-area-inset-bottom));max-width:none}
+}
+@media(max-width:360px){
+ .header .brand small{display:none}
+ .headstatus #signedInName{max-width:74px}
+ .camera .name{font-size:9px}
+ .camera .camfoot{font-size:8px}
+ .center{padding:8px}
+ .walltools{padding:7px}
+}
+@media(orientation:landscape) and (max-height:480px) and (max-width:920px){
+ #mobileNav{padding:2px 6px calc(2px + env(safe-area-inset-bottom))}
+ #mobileNav .mobile-tab{min-height:42px;flex-direction:row;gap:5px}
+ #console{padding-bottom:calc(50px + env(safe-area-inset-bottom))}
+ .header{min-height:44px}
+}
