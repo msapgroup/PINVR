@@ -8,7 +8,7 @@ function chooseTheme(value){
  for(const select of ['#loginTheme','#settingsTheme']){
   const el=$(select);if(el)el.value=theme;
  }
- $('[data-theme-choice]').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.themeChoice===theme)));
+ $$('[data-theme-choice]').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.themeChoice===theme)));
  try{localStorage.setItem(THEME_KEY,theme)}catch(e){/* Private browsing or storage policy: theme works for this page. */}
 }
 let initialTheme='red';
@@ -16,7 +16,7 @@ try{initialTheme=localStorage.getItem(THEME_KEY)||'red'}catch(e){}
 chooseTheme(initialTheme);
 $('#loginTheme').addEventListener('change',e=>chooseTheme(e.target.value));
 $('#settingsTheme').addEventListener('change',e=>chooseTheme(e.target.value));
-$('[data-theme-choice]').forEach(btn=>btn.addEventListener('click',()=>chooseTheme(btn.dataset.themeChoice)));
+$$('[data-theme-choice]').forEach(btn=>btn.addEventListener('click',()=>chooseTheme(btn.dataset.themeChoice)));
 
 const phoneLayout=()=>window.matchMedia('(max-width:680px)').matches;
 let cameras=[],selected=null,layout=phoneLayout()?4:12,group='all',focused=false,user=null,changing=false,liveRelay=false;let peers=[];let talkPeer=null,talkStream=null,talkAttempt=0,talkHeld=false,talkCameraId=null,listenEnabled=false,listenCameraId=null;
@@ -31,10 +31,10 @@ $('#reminderLater').onclick=()=>{$('#passwordReminder').hidden=true};
 $('#reminderChange').onclick=$('#accountPassword').onclick=()=>showAuth(true);
 $('#cancelPasswordChange').onclick=()=>enter();
 $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'})}catch(e){}showAuth()});
-function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives();loadAlerts()}}
-$('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
-$('[data-mobile-page]').forEach(b=>b.addEventListener('click',()=>{showPage(b.dataset.mobilePage);window.scrollTo({top:0,behavior:'instant'})}));
-if(phoneLayout()){$('[data-layout]').forEach(x=>x.classList.toggle('active',Number(x.dataset.layout)===4));}
+function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives();loadAlerts()}}
+$$('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
+$$('[data-mobile-page]').forEach(b=>b.addEventListener('click',()=>{showPage(b.dataset.mobilePage);window.scrollTo({top:0,behavior:'instant'})}));
+if(phoneLayout()){$$('[data-layout]').forEach(x=>x.classList.toggle('active',Number(x.dataset.layout)===4));}
 async function getCameras(){try{cameras=await api('/api/cameras');if(!cameras.some(c=>c.id===selected))selected=cameras[0]?.id||null;render()}catch(e){toast(e.message)}}
 function render(){const find=cameras.find(c=>c.id===selected);if(talkCameraId!==null&&talkCameraId!==selected)stopTalking();if(listenEnabled&&listenCameraId!==selected)setListening(false);const canTalk=!!find?.talk_enabled&&(user?.role==='admin'||!!user?.talk_allowed);$('#talkPanel').hidden=!canTalk;if(!canTalk&&listenEnabled)setListening(false);if(canTalk)$('#talkHint').textContent='Hold to speak through '+find.name+'. Compatible camera and HTTPS required.';$('#selectedName').textContent=find?.name||'No camera selected';$('#selectedIP').textContent=user?.role==='viewer'?'Hidden':find?.host||'—';$('#selectedState').textContent=find?(find.enabled?'Configured':'Disabled'):'—';$('#selectedRecording').textContent=user?.role==='viewer'?'Hidden':find?(find.active?'Active':find.recording?'Waiting':'Off'):'—';$('#totalCount').textContent=`(${cameras.length})`;$('#wallCount').textContent=`${cameras.length} camera profiles`;
 const q=$('#search').value.trim().toLowerCase();$('#tree').innerHTML=cameras.filter(c=>c.name.toLowerCase().includes(q)).map(c=>`<button class="resource child ${c.id===selected?'active':''}" data-select="${c.id}"><i class="dot"></i> ${escapeHTML(c.name)}</button>`).join('');
@@ -43,7 +43,7 @@ if(liveRelay && $('#page-live').classList.contains('active'))startLiveFeeds();
 $('#deviceList').innerHTML=user?.role==='viewer'?'':cameras.map(c=>`<div class="devicerow"><div><b>${escapeHTML(c.name)}</b><small>${escapeHTML(c.host)}</small></div><span class="tag">${c.active?'● Recording':c.recording?'Waiting':'Off'}</span><div><button data-edit="${c.id}">Edit</button><button data-delete="${c.id}">Delete</button></div></div>`).join('')||'<p class="muted">No cameras configured yet.</p>';
 {const oldSelected=$('#clipCamera').value;$('#clipCamera').innerHTML='<option value="">All cameras</option>'+cameras.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');if([...$('#clipCamera').options].some(x=>x.value===oldSelected))$('#clipCamera').value=oldSelected}}
 $('#search').addEventListener('input',render);document.addEventListener('click',e=>{const b=e.target.closest('[data-select]');if(b){selected=Number(b.dataset.select);render()}});
-$$('[data-layout]').forEach(b=>b.addEventListener('click',()=>{layout=Number(b.dataset.layout);focused=false;$$('[data-layout]').forEach(x=>x.classList.toggle('active',x===b));render()}));
+$$$('[data-layout]').forEach(b=>b.addEventListener('click',()=>{layout=Number(b.dataset.layout);focused=false;$$$('[data-layout]').forEach(x=>x.classList.toggle('active',x===b));render()}));
 $('#focus').onclick=()=>{focused=!focused;render()};$('#showAll').onclick=()=>{focused=false;render()};$('#refresh').onclick=getCameras;$('#cameraRefresh').onclick=getCameras;
 function openEditor(id=null){const c=cameras.find(x=>x.id===id);$('#rtspTestResults').textContent='Enter camera details, then select Test RTSP Connection. No settings will be saved.';$('#editor').hidden=false;$('#cameraId').value=c?.id||'';$('#editHeading').textContent=c?'Edit '+c.name:'Add camera';$('#camName').value=c?.name||'';$('#camHost').value=c?.host||'';$('#camUser').value=c?.username||'';$('#camPassword').value='';$('#camMain').value=c?.main_path||'/Streaming/Channels/101';$('#camSub').value=c?.sub_path||'/Streaming/Channels/102';$('#camRecord').checked=c?.recording||false;$('#camTalkEnabled').checked=!!c?.talk_enabled;$('#camMode').value=c?.recording_mode||'continuous';$('#camFormat').value=c?.record_format||'mp4';$('#camSnapshots').value=String(c?.snapshot_count||1);$('#camEnabled').checked=c?.enabled??true;showPage('devices');$('#editor').scrollIntoView({behavior:'smooth',block:'nearest'})}
 $('#addSide').onclick=()=>openEditor();$('#addCamera').onclick=()=>openEditor();$('#closeEditor').onclick=$('#cancelEdit').onclick=()=>{$('#editor').hidden=true};$('#openCameraEdit').onclick=()=>selected?openEditor(selected):toast('Select a camera first');
