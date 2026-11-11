@@ -35,31 +35,91 @@ The installer sets up system Python virtualenv, FFmpeg, SHA256-verified native g
 
 **Initial credentials:** username `Admin`, password `raspberry`. A password change is **strongly recommended**, but not required to use the app. The reminder appears on every new login until the password has been changed (new passwords require at least 12 characters). Never expose port 8080 directly to the public internet. Use an HTTPS reverse proxy and a VPN (WireGuard/Tailscale) for remote access.
 
-### Mount the USB drive (required)
+### Mount the USB drive permanently (required)
 
-The recorder **intentionally refuses to write** if `/mnt/pinvr-recordings` is not a mounted volume, to protect the OS microSD card. Find the correct drive UUID and filesystem type:
+PiNVR writes recordings to `/mnt/pinvr-recordings`. **This must be the existing external USB drive, not a directory on the Raspberry Pi microSD card.** The recorder refuses to write when the drive is not mounted. **Do not format or repartition a drive that already contains recordings.**
+
+**Step 1 — Identify the external drive and its filesystem.** Connect your USB drive, then run:
 
 ```bash
-lsblk -f
+lsblk -o NAME,SIZE,FSTYPE,UUID,LABEL,MOUNTPOINTS,MODEL
 sudo blkid
 ```
 
-Add the appropriate persistent entry to `/etc/fstab` using the correct UUID/filesystem. For an ext4 drive, one example is:
+Find the partition that matches the **USB drive's size and model** (often `/dev/sda1`, but it may have a different name). Write down its **actual UUID** and **FSTYPE** (such as `ext4`, `exfat`, or `ntfs`). Double-check that it is **not the microSD system partition**. If it is already mounted elsewhere, identify that mount and stop before changing anything: moving a live mount may interrupt other software.
 
-```text
+**Step 2 — Create the recording mount point and back up `fstab`.**
+
+```bash
+sudo mkdir -p /mnt/pinvr-recordings
+sudo cp -a /etc/fstab "/etc/fstab.backup.$(date +%Y%m%d-%H%M%S)"
+```
+
+**Step 3 — Open `fstab` and add exactly one matching line.**
+
+```bash
+sudo nano /etc/fstab
+```
+
+For a USB drive whose `FSTYPE` is **ext4**, add the following line at the bottom, replacing `YOUR_ACTUAL_USB_UUID` with the UUID reported by `lsblk` (leave `UUID=` intact):
+
+```fstab
 UUID=YOUR_ACTUAL_USB_UUID /mnt/pinvr-recordings ext4 defaults,nofail,x-systemd.device-timeout=10 0 2
 ```
 
-Then:
+For a drive whose `FSTYPE` is **exfat**, use this pattern **instead**, replacing `1000` with the actual numeric UID and GID of the `pinvr` service user from `id pinvr`:
 
 ```bash
-sudo mount -a
-sudo chown -R pinvr:pinvr /mnt/pinvr-recordings
-sudo systemctl restart pinvr
-sudo journalctl -u pinvr -f
+id pinvr
 ```
 
-**Important:** Check `findmnt /mnt/pinvr-recordings` and backups before formatting or changing an existing USB drive. Never format a drive with existing footage without a backup. For USB drives formatted exFAT/NTFS, use the correct mount options to grant the `pinvr` service write access.
+```fstab
+UUID=YOUR_ACTUAL_USB_UUID /mnt/pinvr-recordings exfat defaults,nofail,uid=PINVR_UID,gid=PINVR_GID,umask=007,x-systemd.device-timeout=10 0 0
+```
+
+For **NTFS** drives, check available filesystem support first with `grep ntfs /proc/filesystems` and `command -v mount.ntfs-3g`. Do not use the ext4 line for NTFS: its mount type and permission options differ. Prefer ext4 on a Linux-only recording drive, but **do not reformat an existing drive just to follow this guide**. Ask for help with the correct NTFS entry if needed.
+
+**Save in Nano:** press **Ctrl+O**, press **Enter**, then press **Ctrl+X**. Avoid duplicate `fstab` entries for the same drive or mount point.
+
+**Step 4 — Test the mount before starting recording.**
+
+```bash
+sudo systemctl daemon-reload
+sudo findmnt --verify --verbose
+sudo mount /mnt/pinvr-recordings
+findmnt /mnt/pinvr-recordings -o TARGET,SOURCE,FSTYPE,OPTIONS
+lsblk -f
+```
+
+If `mount` reports `already mounted`, that is acceptable **only if** `findmnt` shows the **correct external USB partition** at `/mnt/pinvr-recordings`. If `findmnt` reports nothing or the wrong device, **stop** and correct `fstab` before proceeding. Do not save recordings to an unmounted directory.
+
+**Step 5 — Give PiNVR write access.** For an **ext4** drive, set ownership of the recording directory to the service account:
+
+```bash
+sudo chown pinvr:pinvr /mnt/pinvr-recordings
+sudo chmod 750 /mnt/pinvr-recordings
+```
+
+For **exFAT**, access comes from the `uid`/`gid` mount options, not `chown`. On either supported filesystem, test writing as the application user:
+
+```bash
+sudo -u pinvr sh -c 'touch /mnt/pinvr-recordings/.pinvr-write-test && rm /mnt/pinvr-recordings/.pinvr-write-test'
+```
+
+If that fails, correct the USB mount permissions before proceeding. Avoid a blanket recursive `chown -R` on a drive with existing unrelated files.
+
+**Step 6 — Restart PiNVR and check recording status.**
+
+```bash
+sudo systemctl restart pinvr
+sudo systemctl status pinvr --no-pager
+sudo journalctl -u pinvr -n 50 --no-pager
+findmnt /mnt/pinvr-recordings
+```
+
+In PiNVR, check **Settings → System Health / Storage** for the mounted USB drive, then enable recording for one camera and verify a clip is saved. Finally reboot (`sudo reboot`) when convenient and confirm `findmnt /mnt/pinvr-recordings` still lists the correct USB device.
+
+**Troubleshooting:** If `findmnt --verify` reports errors, restore the most recent backup you made in Step 2 (inspect the backup name first), correct the entry, and rerun the checks. A USB disk mounting slowly at startup may need extra troubleshooting with `journalctl -b -u mnt-pinvr\\x2drecordings.mount`. Filesystems and device ownership vary, so only use an example that matches your drive.
 
 ### Add a camera
 
