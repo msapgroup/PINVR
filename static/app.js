@@ -1,5 +1,23 @@
 (()=>{'use strict';
 const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
+
+const THEME_KEY='pinvr-color-theme';
+function chooseTheme(value){
+ const theme=value==='blue'?'blue':'red';
+ document.documentElement.dataset.theme=theme;
+ for(const select of ['#loginTheme','#settingsTheme']){
+  const el=$(select);if(el)el.value=theme;
+ }
+ $('[data-theme-choice]').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.dataset.themeChoice===theme)));
+ try{localStorage.setItem(THEME_KEY,theme)}catch(e){/* Private browsing or storage policy: theme works for this page. */}
+}
+let initialTheme='red';
+try{initialTheme=localStorage.getItem(THEME_KEY)||'red'}catch(e){}
+chooseTheme(initialTheme);
+$('#loginTheme').addEventListener('change',e=>chooseTheme(e.target.value));
+$('#settingsTheme').addEventListener('change',e=>chooseTheme(e.target.value));
+$('[data-theme-choice]').forEach(btn=>btn.addEventListener('click',()=>chooseTheme(btn.dataset.themeChoice)));
+
 const phoneLayout=()=>window.matchMedia('(max-width:680px)').matches;
 let cameras=[],selected=null,layout=phoneLayout()?4:12,group='all',focused=false,user=null,changing=false,liveRelay=false;let peers=[];let talkPeer=null,talkStream=null,talkAttempt=0,talkHeld=false,talkCameraId=null,listenEnabled=false,listenCameraId=null;
 const escapeHTML=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
