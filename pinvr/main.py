@@ -56,6 +56,7 @@ def init_db():
         db.execute('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY COLLATE NOCASE, hash TEXT NOT NULL, must_change INTEGER NOT NULL)')
         cols={x['name'] for x in db.execute('PRAGMA table_info(users)')}
         if 'role' not in cols: db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'")
+        if 'talk_allowed' not in cols: db.execute("ALTER TABLE users ADD COLUMN talk_allowed INTEGER NOT NULL DEFAULT 0")
         db.execute('CREATE TABLE IF NOT EXISTS cameras (id INTEGER PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, main_path TEXT NOT NULL, sub_path TEXT NOT NULL, username TEXT, password TEXT, recording INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, created_at TEXT)')
         camera_cols={x['name'] for x in db.execute('PRAGMA table_info(cameras)')}
         if 'record_format' not in camera_cols: db.execute("ALTER TABLE cameras ADD COLUMN record_format TEXT NOT NULL DEFAULT 'mp4'")
@@ -64,6 +65,7 @@ def init_db():
             db.execute("ALTER TABLE cameras ADD COLUMN recording_mode TEXT NOT NULL DEFAULT 'continuous'")
         if 'motion_detection' not in [c['name'] for c in db.execute('PRAGMA table_info(cameras)')]:
             db.execute("ALTER TABLE cameras ADD COLUMN motion_detection INTEGER NOT NULL DEFAULT 0")
+        if 'talk_enabled' not in camera_cols: db.execute("ALTER TABLE cameras ADD COLUMN talk_enabled INTEGER NOT NULL DEFAULT 0")
         if 'motion_sensitivity' not in [c['name'] for c in db.execute('PRAGMA table_info(cameras)')]:
             db.execute("ALTER TABLE cameras ADD COLUMN motion_sensitivity INTEGER NOT NULL DEFAULT 5")
         db.execute('CREATE TABLE IF NOT EXISTS motion_tokens (camera_id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL)')
@@ -96,7 +98,7 @@ def require_user(request: Request):
     if not token:
         raise HTTPException(401, 'Login required')
     with connect() as db:
-        r = db.execute('SELECT u.name,u.must_change,u.role FROM sessions s JOIN users u ON s.username=u.name WHERE s.token_hash=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
+        r = db.execute('SELECT u.name,u.must_change,u.role,u.talk_allowed FROM sessions s JOIN users u ON s.username=u.name WHERE s.token_hash=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), int(time.time()))).fetchone()
     if not r:
         raise HTTPException(401, 'Session expired')
     return dict(r)
@@ -133,6 +135,11 @@ class NetworkPort(BaseModel):
 class NewViewer(BaseModel):
     username: str = Field(min_length=3,max_length=48,pattern=r'^[A-Za-z][A-Za-z0-9_.-]*$')
     password: str = Field(min_length=12,max_length=128)
+    talk_allowed: bool = False
+
+
+class ViewerTalkPermission(BaseModel):
+    talk_allowed: bool = False
 
 
 class ViewerPassword(BaseModel):
@@ -161,6 +168,7 @@ class Camera(BaseModel):
     snapshot_count: int = Field(default=1, ge=1, le=7)
     recording_mode: str = Field(default='continuous', pattern='^(continuous|motion|off)$')
     motion_detection: bool = False
+    talk_enabled: bool = False
     motion_sensitivity: int = Field(default=5, ge=1, le=10)
     enabled: bool = True
 
@@ -183,6 +191,7 @@ def camera_row(row):
     d['snapshot_count'] = row['snapshot_count']
     d['recording_mode'] = row['recording_mode']
     d['motion_detection'] = bool(row['motion_detection'])
+    d['talk_enabled'] = bool(row['talk_enabled'])
     d['motion_sensitivity'] = row['motion_sensitivity']
     d['enabled'] = bool(row['enabled'])
     d['active'] = row['id'] in PROCS and PROCS[row['id']].poll() is None
@@ -314,7 +323,7 @@ def icon(): return FileResponse(STATIC/'icon.svg',media_type='image/svg+xml')
 
 @app.get('/api/me')
 def me(u=Depends(require_user)):
-    return {'username':u['name'],'role':u['role'],'must_change':bool(u['must_change'])}
+    return {'username':u['name'],'role':u['role'],'talk_allowed':u['role']=='admin' or bool(u['talk_allowed']),'must_change':bool(u['must_change'])}
 
 
 @app.post('/api/login')
@@ -328,7 +337,7 @@ def login(body:Login,response:Response,request:Request):
         db.execute('INSERT INTO sessions VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),user['name'],int(time.time()+SESSION_HOURS*3600)))
         db.execute('DELETE FROM sessions WHERE expires<?',(int(time.time()),))
     response.set_cookie(COOKIE,token,max_age=SESSION_HOURS*3600,httponly=True,samesite='strict',secure=(request.url.scheme=='https'),path='/')
-    return {'username':user['name'],'role':user['role'],'must_change':bool(user['must_change'])}
+    return {'username':user['name'],'role':user['role'],'talk_allowed':user['role']=='admin' or bool(user['talk_allowed']),'must_change':bool(user['must_change'])}
 
 
 @app.post('/api/password')
@@ -356,7 +365,7 @@ def cameras(u=Depends(require_user)):
     with connect() as db:
         rows=[camera_row(x) for x in db.execute('SELECT * FROM cameras ORDER BY id')]
     if u['role']=='viewer':
-        return [{'id':c['id'],'name':c['name'],'enabled':c['enabled']} for c in rows if c['enabled']]
+        return [{'id':c['id'],'name':c['name'],'enabled':c['enabled'],'talk_enabled':bool(c['talk_enabled'] and u['talk_allowed'])} for c in rows if c['enabled']]
     return rows
 
 
@@ -364,7 +373,7 @@ def cameras(u=Depends(require_user)):
 def add_camera(cam:Camera,u=Depends(require_admin)):
     validate_cam(cam)
     with connect() as db:
-        cur=db.execute('INSERT INTO cameras(name,host,main_path,sub_path,username,password,recording,enabled,created_at,record_format,snapshot_count,recording_mode,motion_detection,motion_sensitivity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password,int(cam.recording),int(cam.enabled),datetime.now(timezone.utc).isoformat(),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity))
+        cur=db.execute('INSERT INTO cameras(name,host,main_path,sub_path,username,password,recording,enabled,created_at,record_format,snapshot_count,recording_mode,motion_detection,motion_sensitivity,talk_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password,int(cam.recording),int(cam.enabled),datetime.now(timezone.utc).isoformat(),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled)))
         cid=cur.lastrowid
     reconcile()
     refresh_relay()
@@ -379,7 +388,7 @@ def edit_camera(cid:int,cam:Camera,u=Depends(require_admin)):
             old=db.execute('SELECT password FROM cameras WHERE id=?',(cid,)).fetchone()
             if not old: raise HTTPException(404,'Camera not found')
             stop_recorder(cid)
-            db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=?,record_format=?,snapshot_count=?,recording_mode=?,motion_detection=?,motion_sensitivity=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,cid))
+            db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=?,record_format=?,snapshot_count=?,recording_mode=?,motion_detection=?,motion_sensitivity=?,talk_enabled=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled),cid))
         reconcile()
         refresh_relay()
     return {'id':cid}
@@ -440,7 +449,7 @@ def discover_onvif(u=Depends(require_admin)):
 @app.get('/api/users')
 def list_users(u=Depends(require_admin)):
     with connect() as db:
-        return [{'username':x['name'],'role':x['role'],'must_change':bool(x['must_change'])} for x in db.execute('SELECT name,role,must_change FROM users ORDER BY name')]
+        return [{'username':x['name'],'role':x['role'],'must_change':bool(x['must_change']),'talk_allowed':bool(x['talk_allowed'])} for x in db.execute('SELECT name,role,must_change,talk_allowed FROM users ORDER BY name')]
 
 
 @app.post('/api/users',status_code=201)
@@ -449,11 +458,21 @@ def add_viewer(body:NewViewer,u=Depends(require_admin)):
         raise HTTPException(422,'Choose a different username and a stronger password')
     try:
         with connect() as db:
-            db.execute('INSERT INTO users(name,hash,must_change,role) VALUES (?,?,1,?)',
-                       (body.username,password_hash(body.password),'viewer'))
+            db.execute('INSERT INTO users(name,hash,must_change,role,talk_allowed) VALUES (?,?,1,?,?)',
+                       (body.username,password_hash(body.password),'viewer',int(body.talk_allowed)))
     except sqlite3.IntegrityError:
         raise HTTPException(409,'Username already exists') from None
-    return {'username':body.username,'role':'viewer','must_change':True}
+    return {'username':body.username,'role':'viewer','must_change':True,'talk_allowed':body.talk_allowed}
+
+
+@app.put('/api/users/{username}/talk')
+def update_viewer_talk(username:str, body:ViewerTalkPermission, u=Depends(require_admin)):
+    # Account permission is enforced during *every* microphone signaling request.
+    with connect() as db:
+        row=db.execute('SELECT name,role FROM users WHERE name=?',(username,)).fetchone()
+        if not row or row['role']!='viewer': raise HTTPException(404,'Viewer not found')
+        db.execute('UPDATE users SET talk_allowed=? WHERE name=?',(int(body.talk_allowed),row['name']))
+    return {'username':row['name'],'talk_allowed':body.talk_allowed}
 
 
 @app.put('/api/users/{username}/password')
@@ -754,6 +773,32 @@ def motion_event_list(camera_id:int|None=None,u=Depends(require_user)):
 def refresh_relay():
     with connect() as db:
         relay.restart_relay([dict(x) for x in db.execute('SELECT * FROM cameras')])
+
+
+@app.post('/api/talk/{cid}/offer')
+async def talk_offer(cid:int, request:Request, u=Depends(require_user)):
+    # This is an explicit opt-in backchannel. Camera and viewer permissions are
+    # checked server-side. Browser must be on HTTPS to access its microphone.
+    if u['role']!='admin' and not u['talk_allowed']:
+        raise HTTPException(403,'Viewer talk permission disabled')
+    with connect() as db:
+        cam=db.execute('SELECT id,enabled,talk_enabled FROM cameras WHERE id=?',(cid,)).fetchone()
+    if not cam or not cam['enabled'] or not cam['talk_enabled']:
+        raise HTTPException(403,'Camera talk not enabled')
+    if not relay.is_running():
+        raise HTTPException(503,'go2rtc relay unavailable')
+    offer=await request.body()
+    if not (0 < len(offer) < 65536 and b'm=audio' in offer and b'a=sendonly' in offer):
+        raise HTTPException(422,'An audio sending WebRTC offer is required')
+    try:
+        async with httpx.AsyncClient(timeout=15.0,trust_env=False) as client:
+            resp=await client.post('http://127.0.0.1:1984/api/webrtc',
+                params={'src':f'cam{cid}_main'}, content=offer,
+                headers={'Content-Type':'application/sdp'})
+            resp.raise_for_status()
+    except httpx.HTTPError:
+        raise HTTPException(502,'Camera audio backchannel negotiation failed') from None
+    return Response(resp.content,media_type='application/sdp')
 
 
 @app.post('/api/live/{cid}/offer')
