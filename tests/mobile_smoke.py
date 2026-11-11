@@ -7,6 +7,7 @@ html=(root/'static/index.html').read_text().replace('<link rel="stylesheet" href
 js=(root/'static/app.js').read_text()
 names=['Front Driveway','Front Entrance','Garage','Side Gate','Backyard','Rear Gate','Parking Lot','Front Street','Workshop','Storage Room','Office','Server Room']
 cams=[dict(id=i+1,name=n,host=f'192.168.1.{101+i}',recording=False,enabled=True,active=False,username='',main_path='/Streaming/Channels/101',sub_path='/Streaming/Channels/102',record_format='mp4',recording_mode='continuous',snapshot_count=3) for i,n in enumerate(names)]
+cams[0]['talk_enabled']=True  # Example compatible camera; Talk remains disabled for viewers by default.
 out=root/'screenshots';out.mkdir(exist_ok=True)
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
@@ -26,6 +27,7 @@ with sync_playwright() as p:
    assert metrics['body']<=width+2,(width,role,metrics)
    assert len(metrics['cols'].split(' '))==2,metrics
    assert metrics['nav']=='flex',metrics
+   assert page.locator('#talkPanel').is_visible() == (role=='admin'), 'Talk panel permission visibility mismatch'
    if role=='viewer': assert len(metrics['buttons'])==2,metrics
    if width==390:
     page.screenshot(path=str(out/f'mobile-{role}-live-new.png'),full_page=True)
