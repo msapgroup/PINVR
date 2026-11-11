@@ -13,7 +13,7 @@ $('#reminderLater').onclick=()=>{$('#passwordReminder').hidden=true};
 $('#reminderChange').onclick=$('#accountPassword').onclick=()=>showAuth(true);
 $('#cancelPasswordChange').onclick=()=>enter();
 $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'})}catch(e){}showAuth()});
-function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives()}}
+function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives();loadAlerts()}}
 $('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 $('[data-mobile-page]').forEach(b=>b.addEventListener('click',()=>{showPage(b.dataset.mobilePage);window.scrollTo({top:0,behavior:'instant'})}));
 if(phoneLayout()){$('[data-layout]').forEach(x=>x.classList.toggle('active',Number(x.dataset.layout)===4));}
@@ -96,6 +96,88 @@ async function startLiveFeeds(){
  }
 }
 
+
+
+const alertHelp={
+ ntfy:'ntfy://YOUR_PRIVATE_TOPIC (subscribe to the topic in the ntfy phone app; use an unguessable topic or authenticated server).',
+ pushover:'pover://USER_KEY@APP_TOKEN (get both values in your Pushover account).',
+ telegram:'tgram://BOT_TOKEN/CHAT_ID (create a Telegram bot and get your chat ID).',
+ email:'mailtos://USERNAME:PASSWORD@SMTP_HOST?to=recipient@example.com (SMTP service settings vary).',
+ discord:'discord://WEBHOOK_ID/WEBHOOK_TOKEN (copy the Discord channel webhook credentials).',
+ slack:'slack://TOKEN_A/TOKEN_B/TOKEN_C (or use a compatible Microsoft Teams Apprise URL).',
+ webhook:'jsons://your-server.example.com/alert (HTTPS JSON webhook; avoid localhost and internal addresses).'
+};
+function resetAlertEditor(){
+ $('#alertEditId').value='';$('#alertForm').reset();
+ $('#alertURL').required=true;$('#alertURL').value='';
+ $('#alertURL').placeholder='Example: ntfy://your-private-topic';
+ $('#saveAlertDestination').textContent='Save Alert Destination';
+ $('#alertProviderHelp').textContent=alertHelp[$('#alertProvider').value];
+}
+$('#alertProvider').onchange=()=>{$('#alertProviderHelp').textContent=alertHelp[$('#alertProvider').value]||''};
+$('#resetAlertForm').onclick=resetAlertEditor;
+async function loadAlerts(){
+ if(user?.role!=='admin')return;
+ try{
+  const saved=await api('/api/alerts/destinations');
+  $('#alertDestinationList').innerHTML=saved.length?saved.map(item=>
+    '<div class="alert-destination"><div><strong>'+escapeHTML(item.label)+'</strong>'+
+    '<small>'+escapeHTML(item.provider.toUpperCase())+' · '+(item.enabled?'Enabled':'Disabled')+
+    ' · '+(item.motion?'Motion ':'')+(item.storage?'Storage ':'')+
+    ' · '+escapeHTML(item.cooldown_seconds)+'s cooldown</small></div>'+
+    '<div class="actions"><button class="outline" data-alert-test="'+item.id+'">Send Test</button>'+
+    '<button class="outline" data-alert-edit="'+item.id+'">Edit</button>'+
+    '<button class="outline" data-alert-delete="'+item.id+'">Remove</button></div></div>'
+  ).join(''):'<p class="muted">No destinations configured yet. Add one below, then use Send Test to verify delivery.</p>';
+  window.__pinvrAlertDestinations=saved;
+ }catch(err){$('#alertDestinationList').textContent='Could not load alert destinations: '+err.message;}
+}
+$('#alertDestinationList').addEventListener('click',async e=>{
+ const btn=e.target.closest('button');if(!btn)return;
+ const id=btn.dataset.alertTest||btn.dataset.alertEdit||btn.dataset.alertDelete;
+ const item=(window.__pinvrAlertDestinations||[]).find(x=>String(x.id)===String(id));if(!item)return;
+ if(btn.hasAttribute('data-alert-edit')){
+   $('#alertEditId').value=String(item.id);
+   $('#alertName').value=item.label;
+   $('#alertProvider').value=({ntfy:'ntfy',ntfys:'ntfy',pover:'pushover',tgram:'telegram',
+       mailto:'email',mailtos:'email',discord:'discord',discords:'discord',slack:'slack',msteams:'slack',
+       jsons:'webhook'})[item.provider]||'webhook';
+   $('#alertProviderHelp').textContent=alertHelp[$('#alertProvider').value];
+   $('#alertURL').value='';$('#alertURL').required=false;
+   $('#alertURL').placeholder='Leave blank to keep saved credentials';
+   $('#alertMotion').checked=item.motion;$('#alertStorage').checked=item.storage;
+   $('#alertCooldown').value=String(item.cooldown_seconds);
+   if($('#alertCooldown').value==='')$('#alertCooldown').value='120';
+   $('#alertEnabled').checked=item.enabled;
+   $('#saveAlertDestination').textContent='Save Changes';
+   $('#alertForm').scrollIntoView({behavior:'smooth',block:'nearest'});
+   return;
+ }
+ if(btn.hasAttribute('data-alert-delete')){
+   if(!confirm('Remove alert destination '+item.label+'?'))return;
+   try{await api('/api/alerts/destinations/'+id,{method:'DELETE'});toast('Alert destination removed');await loadAlerts();}catch(err){toast(err.message)}
+   return;
+ }
+ btn.disabled=true;
+ try{
+   const result=await api('/api/alerts/destinations/'+id+'/test',{method:'POST'});
+   toast(result.message||'Test notification sent. Check your device.');
+ }catch(err){toast('Test failed: '+err.message)}
+ finally{btn.disabled=false}
+});
+$('#alertForm').onsubmit=async e=>{
+ e.preventDefault();
+ if(!$('#alertMotion').checked&&!$('#alertStorage').checked){toast('Choose at least one event type.');return}
+ const id=$('#alertEditId').value;
+ const payload={label:$('#alertName').value.trim(),url:$('#alertURL').value.trim()||(id?'KEEP_EXISTING':''),
+ enabled:$('#alertEnabled').checked,motion:$('#alertMotion').checked,storage:$('#alertStorage').checked,
+ cooldown_seconds:Number($('#alertCooldown').value)};
+ try{
+   await api('/api/alerts/destinations'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(payload)});
+   toast(id?'Alert destination updated':'Alert destination added');
+   resetAlertEditor();await loadAlerts();
+ }catch(err){toast('Unable to save alert destination: '+err.message)}
+};
 
 async function loadNetwork(){try{const info=await api('/api/network');$('#webPort').value=info.port;$('#networkNotice').textContent=info.managed?`Current PiNVR port: ${info.port}. Your LAN/VPN address uses :${info.port}.`:'Preview/development mode: install as a systemd service to change ports from here.';$('#saveWebPort').disabled=!info.managed;}catch(e){$('#networkNotice').textContent='Could not read network settings: '+e.message}}
 $('#networkForm').addEventListener('submit',async e=>{e.preventDefault();const port=Number($('#webPort').value);const old=Number(location.port)||(location.protocol==='https:'?443:80);if(!Number.isInteger(port)||port<1024||port>65535){toast('Choose a port between 1024 and 65535');return}if(!confirm(`Change PiNVR web access to port ${port}? The server will restart, and you must reconnect. VPN and router rules may also need updating.`))return;try{const r=await api('/api/network',{method:'POST',body:JSON.stringify({port,current_password:$('#portPassword').value})});$('#portPassword').value='';if(r.restarting){const newUrl=new URL(location.href);newUrl.port=String(r.port);newUrl.pathname='/';newUrl.search='';newUrl.hash='';$('#networkNotice').innerHTML='Port change saved. PiNVR is restarting. <a id="newNetworkLink" href="#">Open new PiNVR address</a>. If it fails to reconnect, check the system service and firewall.';$('#newNetworkLink').href=newUrl.href;$('#newNetworkLink').textContent=newUrl.href;toast('Port changed to '+r.port+'. Open the new URL.');}else toast('Port unchanged');}catch(err){toast(err.message);$('#networkNotice').textContent=err.message}});
