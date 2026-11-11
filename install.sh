@@ -30,8 +30,9 @@ Group=pinvr
 WorkingDirectory=/opt/pinvr
 Environment=PINVR_DATA=/var/lib/pinvr
 Environment=PINVR_RECORDINGS=/mnt/pinvr-recordings
-ExecStart=/opt/pinvr/.venv/bin/uvicorn pinvr.main:app --host 0.0.0.0 --port 8080 --workers 1
-Restart=on-failure
+Environment=PINVR_MANAGED=1
+ExecStart=/opt/pinvr/.venv/bin/python -m pinvr.launcher
+Restart=always
 RestartSec=5
 UMask=0077
 NoNewPrivileges=true
@@ -44,12 +45,15 @@ WantedBy=multi-user.target
 UNIT
 install -d -m 755 /mnt/pinvr-recordings
 systemctl daemon-reload
-systemctl enable --now pinvr
+systemctl enable pinvr
+systemctl restart pinvr
 cat <<MSG
-PiNVR installed: http://$(hostname -I | awk '{print $1}'):8080
+PiNVR installed. Web access port is 8080 by default; change it under Settings > Network Access.
+To verify current port: sudo journalctl -u pinvr -n 30
 Initial login: Admin / raspberry — CHANGE PASSWORD IMMEDIATELY.
 IMPORTANT: Recordings will NOT start until /mnt/pinvr-recordings is mounted as an external drive.
 For example, set a persistent UUID mount in /etc/fstab and make the directory writable by pinvr.
 Allow TCP/UDP port 8555 on your private network for WebRTC media.
-DO NOT expose port 8080 or 8555 directly to the public internet.
+DO NOT expose the admin web port or 8555 directly to the public internet.
+For remote access use your VPN. Any external router mapping port may be different from the PiNVR listening port.
 MSG
