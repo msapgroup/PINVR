@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion, storage
+from pinvr import relay, motion, storage, rtsp_test
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -171,6 +171,11 @@ class Camera(BaseModel):
     talk_enabled: bool = False
     motion_sensitivity: int = Field(default=5, ge=1, le=10)
     enabled: bool = True
+
+
+class CameraConnectionTest(BaseModel):
+    camera: Camera
+    camera_id: int | None = Field(default=None, ge=1)
 
 
 def validate_cam(camera):
@@ -367,6 +372,23 @@ def cameras(u=Depends(require_user)):
     if u['role']=='viewer':
         return [{'id':c['id'],'name':c['name'],'enabled':c['enabled'],'talk_enabled':bool(c['talk_enabled'] and u['talk_allowed'])} for c in rows if c['enabled']]
     return rows
+
+
+@app.post('/api/cameras/test-connection')
+def test_rtsp_connection(body:CameraConnectionTest, u=Depends(require_admin)):
+    """Check camera credentials and stream metadata without saving any settings."""
+    cam = body.camera
+    validate_cam(cam)
+    details = cam.model_dump()
+    if body.camera_id is not None and not cam.password:
+        # The edit form intentionally leaves an existing password blank.
+        # Test with the existing secret only for that same camera ID.
+        with connect() as db:
+            prior = db.execute('SELECT password FROM cameras WHERE id=?', (body.camera_id,)).fetchone()
+        if not prior:
+            raise HTTPException(404, 'Saved camera no longer exists')
+        details['password'] = prior['password'] or ''
+    return rtsp_test.inspect_camera(details, rtsp_url)
 
 
 @app.post('/api/cameras',status_code=201)
