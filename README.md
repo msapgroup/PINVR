@@ -17,7 +17,13 @@
 | Native video motion detection | ![Video motion detection](screenshots/desktop-video-motion-detection.jpg) | Enable built-in motion detection from RTSP substreams, set per-camera sensitivity, and use motion-triggered clips and 1–7 JPG snapshots. Detection requires real compatible camera substreams and sufficient Pi CPU capacity. |
 | Admin Users & Permissions | ![Users](screenshots/desktop-users.jpg) | Create or remove Viewer accounts, reset Viewer passwords and see access restrictions. |
 | Viewer Mobile | ![Viewer mobile](screenshots/mobile-viewer.jpg) | Viewer can open Live View and Playback without accessing Admin settings. |
-| Mobile | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
+| Mobile Admin — Live View | ![Phone Live View](screenshots/mobile-admin-live-new.jpg) | Phone-first default 4-camera grid, quick camera search, large layout/focus buttons and labeled bottom navigation. |
+| Mobile Admin — Playback | ![Phone Playback](screenshots/mobile-admin-playback-new.jpg) | Mobile player, camera selector, recordings and JPG gallery. |
+| Mobile Admin — Camera Setup | ![Phone Camera Settings](screenshots/mobile-admin-camera-setup-new.jpg) | Single-column camera setup with touch-sized recording and motion options. |
+| Mobile Viewer — Live View | ![Phone Viewer Live View](screenshots/mobile-viewer-live-new.jpg) | Live cameras with Viewer-only navigation; no Admin menus. |
+| Mobile Viewer — Playback | ![Phone Viewer Playback](screenshots/mobile-viewer-playback-new.jpg) | Viewer can find and play permitted recordings and JPG snapshots from a phone. |
+| Mobile — Sign In | ![Phone Login](screenshots/mobile-login-new.jpg) | Full-width touch-friendly sign-in form. |
+| Mobile (earlier desktop-responsive view) | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
 | USB Storage Setup | ![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png) | Admin scans supported external USB drives, chooses one and confirms; PiNVR mounts it and makes the mount persistent without Linux commands or formatting. |
 | Network Access | ![Network Access settings](screenshots/desktop-network.jpg) | Change the web listening port, view VPN guidance and understand router external-to-internal mappings. |
 | Login | ![Login](screenshots/login.jpg) | Sign in as Admin or Viewer. A dismissible security reminder appears on each login until the password is changed. |
@@ -199,9 +205,29 @@ A recording format change affects **new files**; previously recorded MP4/MKV fil
 
 ![Viewer mobile view](screenshots/mobile-viewer.jpg)
 
-### Android and iPhone
+### Android and iPhone — browser and home-screen access
 
-Open the same PiNVR address in Chrome or Safari on your local network, then choose **Add to Home Screen**. The responsive website includes an installable web app manifest, but push notifications and offline video are not yet available. Keep access behind a VPN when remote.
+PiNVR works in mobile Safari on iPhone and Chrome on Android. On the phone, connect to your **same private Wi-Fi or VPN**, then open the PiNVR web address such as `http://192.168.1.50:8080` (use your actual Pi IP and configured port).
+
+1. **Sign in:** Admin and Viewer accounts use the same sign-in screen. A recommended password-change reminder is optional, not a login blocker.
+2. **Live:** Phones start with a **four-camera grid** for readable video tiles. Tap a camera, then **Focus** to see one larger feed. Use **1 / 4 / 9 / 12 / 16** to change how many cameras are shown. The player prioritizes up to four simultaneous preview streams to reduce Raspberry Pi load; additional tiles do not all decode at once.
+3. **Bottom navigation:** Use the clearly labeled bottom tabs to switch sections. **Viewers get Live and Playback only**. Admins also see Events, Cameras, and Settings.
+4. **Playback:** Open **Playback**, select a camera, and choose a recorded MP4. Compatible H.264 recordings play directly. MKV files may require a separate player. JPG motion-event images appear below the recordings.
+5. **Admin setup:** Use **Cameras** to add or edit a camera and **Settings** to set up USB storage, users, and VPN listening port. Forms are stacked and scroll vertically on a phone.
+6. **Home screen shortcut:** In Safari, choose **Share → Add to Home Screen**; in Chrome, open the browser menu and choose **Add to Home screen / Install app** (wording varies). This is a responsive web app, not a separately released App Store or Play Store application.
+
+**VPN note:** If PiNVR uses HTTP on a private VPN, some browser install/PWA capabilities, including push and persistent service workers, may need HTTPS. Video also requires the private network to reach go2rtc's WebRTC media port (8555). **Do not forward PiNVR or go2rtc ports directly to the public internet.** Do not promise video while the phone is disconnected from the VPN.
+
+#### Mobile quality checks
+
+To reproduce mobile viewport checks and screenshots on a developer machine with Playwright/Chromium installed:
+
+```bash
+python tests/mobile_smoke.py
+```
+
+The test checks phone widths **360, 390 and 430 pixels**, verifies no horizontal overflow, confirms the 4-camera/two-column starting layout, tests bottom navigation, and checks the Viewer's restricted navigation. Screenshots show example camera profiles and placeholders, **not live footage**. Raspberry Pi hardware tests and browser/codec validation on real phones are still required.
+
 
 ## Architecture
 
