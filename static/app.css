@@ -122,3 +122,9 @@
  .talk-button{width:100%;min-height:62px;font-size:15px}
  #talkState{width:100%;text-align:center}
 }
+
+.talk-controls{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap;flex:1 1 220px}
+.talk-controls .talk-button{flex:1;min-width:125px}
+.talk-button.secondary{background:#222d39;border-color:#4c5e70;color:#e5ecf4}
+.talk-button.secondary[aria-pressed="true"]{background:#28506a;border-color:#6db0d1;color:white}
+@media(max-width:680px){.talk-controls{width:100%;flex-basis:100%}.talk-controls .talk-button{min-width:0;flex:1 1 43%;min-height:58px;font-size:13px}}
