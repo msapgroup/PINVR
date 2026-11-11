@@ -32,6 +32,55 @@
 
 Screenshots are from an application test run using example camera definitions. No footage or performance measurements are claimed.
 
+## Choose your PiNVR appearance
+
+PiNVR has **two built-in charcoal-dark themes**. The approved layout stays the same; only the accent color changes.
+
+| Color style | Actual PiNVR screenshots |
+| --- | --- |
+| **Dark Red + Charcoal** (default) | ![Red dashboard](screenshots/theme-red-desktop.png) |
+| **Dark Blue + Charcoal** | ![Blue dashboard](screenshots/theme-blue-desktop.png) |
+
+**How to switch:** On the login screen select **Appearance → Dark Red / Charcoal** or **Dark Blue / Charcoal**. After signing in as Admin, open **Settings → Appearance & Branding** and select the same option or click one of the two theme swatches. The change takes effect immediately, including the login screen and mobile navigation, and is saved in **your current browser**. Each phone/computer can choose its own style without changing everyone else's settings.
+
+![Theme settings](screenshots/theme-selector-settings.png)
+
+The **PiNVR shield-camera logo concept** appears at the top of the logged-in app and on the login screen, with a consistent **Powered By: MSAPGROUPLLC** footer. The logo is a first draft, not a claim of final design approval.
+
+| Login / mobile views | Screenshot |
+| --- | --- |
+| Red login | ![Red login](screenshots/theme-red-login.png) |
+| Blue login | ![Blue login](screenshots/theme-blue-login.png) |
+| Red mobile | ![Red phone](screenshots/theme-red-mobile.png) |
+| Blue mobile | ![Blue phone](screenshots/theme-blue-mobile.png) |
+
+### Test RTSP Connection before saving a camera
+
+![RTSP connection test results](screenshots/rtsp-connection-test.png)
+
+As **Admin**, go to **Cameras → Add Camera** (or **Edit** for an existing camera). Fill in its name, IP/hostname, camera login, main RTSP stream path and substream RTSP path; then click **Test RTSP Connection**.
+
+PiNVR checks **both** camera streams from the Raspberry Pi and reports whether each connected, its codec (H.264/H.265/etc.), resolution, approximate advertised FPS and available audio. It gives common troubleshooting guidance for wrong passwords, stream paths and network timeouts. The test does **not** save a camera or start recording. You can still save a camera that has a test warning, but fix stream errors before relying on that feed. For example, Hikvision commonly uses `/Streaming/Channels/101` and `/Streaming/Channels/102` (other brands differ).
+
+H.264 is recommended for browsers and WebRTC. H.265 recordings may be possible but browser playback is device/codec-dependent. An existing camera's saved password is reused if you leave its password field blank during testing.
+
+### Set up phone and email alerts
+
+![Alert destination setup](screenshots/alerts-notifications-settings.png)
+
+In the **Admin Settings → Alerts & Notifications** section, you can send alerts through **ntfy, Pushover, Telegram, email (SMTP), Discord, Slack/Microsoft Teams, or an HTTPS webhook**. This uses the Apprise notification library; some providers require a service URL containing an app key, token or SMTP credentials.
+
+1. Choose a **Destination name** such as *Family phone*.
+2. Select the provider and follow the example service-URL instructions below the selector.
+3. Enter the provider URL/credentials, then enable **Motion detected** and/or **USB recording storage unavailable**.
+4. Choose a cooldown (two minutes is the default), then select **Save Alert Destination**.
+5. Click **Send Test** in the saved destination card, and confirm the alert arrives in the selected phone or email app.
+6. Repeat to add multiple phones or notification services. Each destination can be enabled, disabled, edited or removed.
+
+Motion messages are dispatched after PiNVR detects movement. Storage-offline alerts are attempted at most once an hour when recording is enabled. Per-destination cooldowns help prevent repeated motion notifications. Your camera videos and JPG images **are not currently attached to outgoing messages**; they remain in PiNVR Playback. Notifications may fail when the Pi has no network connection or the provider rejects its credentials. The service URLs are not returned to the app after saving. Keep secrets private, and use a private topic/token rather than a publicly discoverable ntfy topic.
+
+This is server-based alert delivery: **your phone does not have to keep the PiNVR browser tab open** to receive an alert from your chosen provider's mobile app. Use your VPN to open PiNVR for playback; do not forward NVR ports publicly.
+
 ## Start here — beginner-friendly Raspberry Pi setup
 
 **New to Linux? You can follow this guide one command at a time.** You do not need Docker or previous Linux experience. The steps below assume your Raspberry Pi already has **Raspberry Pi OS Lite (64-bit)** installed, is connected to your home network, and has internet access.
