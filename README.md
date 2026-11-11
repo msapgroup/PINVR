@@ -18,6 +18,7 @@
 | Admin Users & Permissions | ![Users](screenshots/desktop-users.jpg) | Create or remove Viewer accounts, reset Viewer passwords and see access restrictions. |
 | Viewer Mobile | ![Viewer mobile](screenshots/mobile-viewer.jpg) | Viewer can open Live View and Playback without accessing Admin settings. |
 | Mobile | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
+| USB Storage Setup | ![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png) | Admin scans supported external USB drives, chooses one and confirms; PiNVR mounts it and makes the mount persistent without Linux commands or formatting. |
 | Network Access | ![Network Access settings](screenshots/desktop-network.jpg) | Change the web listening port, view VPN guidance and understand router external-to-internal mappings. |
 | Login | ![Login](screenshots/login.jpg) | Sign in as Admin or Viewer. A dismissible security reminder appears on each login until the password is changed. |
 
@@ -74,7 +75,7 @@ You want to see **active (running)**. If it fails, use `sudo journalctl -u pinvr
 
 ### Step 3 — Set up your USB recording drive
 
-Follow the next section carefully. This step is essential: PiNVR is designed **not** to record to the Pi's system microSD card when the USB recording drive is missing.
+After installing PiNVR, open its **Admin Settings → USB Recording Drive — Automatic Setup** screen. Plug in your external drive, click **Scan USB drives**, select it, and confirm. The app does the Linux drive setup for you. Instructions and a screenshot are below. PiNVR will not record to an unmounted system microSD card.
 
 ### Step 4 — Open PiNVR in your web browser
 
@@ -114,130 +115,33 @@ Next, use **Devices → Add Camera**, enter a camera's IP address and RTSP conne
 | `nano` | A simple terminal-based text editor. |
 | `systemctl` | Starts, stops, and checks background services such as PiNVR. |
 
-### Make the USB drive reconnect automatically after a reboot (required)
+### Set up your USB recording drive — inside PiNVR (no Linux commands)
 
-This is the most important storage step. **You are telling Linux which USB drive holds camera recordings and where to find it.** You do **not** need to erase or format the drive.
+![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png)
 
-> **Safety check:** If this USB drive already contains footage or other important files, make sure you have a backup. Never run a formatting or partitioning command as part of these steps. If a command shows a different drive than expected, **stop** rather than guessing.
+PiNVR can prepare your external USB drive for recordings right from the **Admin dashboard**. You do **not** need to edit `/etc/fstab`, find a UUID, mount a drive manually, or run Terminal commands for storage. The setup also remembers the drive after a restart.
 
-**1. Connect the USB drive and find it.**
+1. **Plug in your external USB recording drive** to a USB 3.0 port on the Raspberry Pi.
+2. On a computer or phone connected to your network or VPN, sign in to PiNVR as **Admin**.
+3. Open **Settings → USB Recording Drive — Automatic Setup**.
+4. Select **Scan USB drives**. The list shows supported external USB drives along with their **name, size, and filesystem**.
+5. **Check the drive's name and size carefully** so you do not choose the wrong drive. Choose the drive that you want to use for your camera recordings.
+6. Enter your current **PiNVR Admin password**, tick the confirmation checkbox, then select **Set Up Selected USB Drive**.
+7. When PiNVR reports that the drive is ready, check **Settings → System Health** to confirm it is mounted. You can now open **Devices**, select one camera, enable recording, and check **Playback** after a clip has been saved.
 
-```bash
-lsblk -o NAME,SIZE,FSTYPE,UUID,LABEL,MOUNTPOINTS,MODEL
-```
+**What the app does for you:** It checks the available USB partitions, excludes the Raspberry Pi system drive and drives currently used elsewhere, makes a backup of Linux's mount configuration, mounts the chosen drive at `/mnt/pinvr-recordings`, checks write access, and sets it to reconnect on reboot. **It does not format, partition, or erase your drive.**
 
-Example of what you might see (your values will be different):
+**Supported for automatic setup:** Available **ext4** and **exFAT** USB partitions. NTFS drives, busy drives, network storage and other filesystems are not auto-configured in this version. If your drive is missing from the list, **do not format it**. Check that it is plugged in, powered on, and not already in use at another mount point, or ask for help.
 
-```text
-NAME        SIZE FSTYPE UUID       MOUNTPOINTS MODEL
-mmcblk0      32G
-└─mmcblk0p2  31G ext4   SYSTEM-ID  /
-sda         2.0T                         USB HDD
-└─sda1      2.0T ext4   ABCD-1234
-```
+**Important:** If your drive already has files, check that you have a backup before making storage configuration changes. Storage settings are **Admin-only**. Viewer accounts cannot change recording drives.
 
-In this example, `mmcblk0` is the Pi's system card (**do not use it**). The external USB disk is `sda`, and its usable partition is `sda1`. Look at **SIZE** and **MODEL** to identify *your* USB drive.
+### Quick troubleshooting if the drive is not found
 
-- **UUID** = the partition's identifier. Copy the **entire** real value, not the example `ABCD-1234`.
-- **FSTYPE** = its format. Choose the instructions matching the value shown, such as `ext4` or `exfat`.
-- **MOUNTPOINTS** = where it is already connected. If the drive is **already mounted at a different folder**, stop and check whether another application is using it before following these steps.
-
-For a second way to see the UUID, run `sudo blkid`.
-
-**2. Create the PiNVR recording folder and make a safety backup of Linux's mount settings.**
-
-```bash
-sudo mkdir -p /mnt/pinvr-recordings
-sudo cp -a /etc/fstab "/etc/fstab.backup.$(date +%Y%m%d-%H%M%S)"
-```
-
-A successful command may show **no message**. That's normal. The backup lets you recover if you accidentally type the mount line incorrectly.
-
-**3. Find the correct example for your filesystem.**
-
-- **ext4 (recommended on a Linux-only recording drive):**
-
-```text
-UUID=YOUR_ACTUAL_USB_UUID /mnt/pinvr-recordings ext4 defaults,nofail,x-systemd.device-timeout=10 0 2
-```
-
-- **exFAT (often used by drives shared with Windows or Mac):** First run `id pinvr`. Note the numbers after `uid=` and `gid=`, then use them in the entry below. For example, if the output says `uid=995(pinvr) gid=990(pinvr)`, substitute `995` and `990`. **Do not literally type** `PINVR_UID` or `PINVR_GID`.
-
-```text
-UUID=YOUR_ACTUAL_USB_UUID /mnt/pinvr-recordings exfat defaults,nofail,uid=PINVR_UID,gid=PINVR_GID,umask=007,x-systemd.device-timeout=10 0 0
-```
-
-- **NTFS:** Do **not** paste either of those lines. NTFS needs filesystem-specific mount settings and may need an additional driver. Ask for help with the `lsblk -f` output first; **you do not need to format or wipe the drive**.
-
-**4. Edit the Linux startup mount file.**
-
-```bash
-sudo nano /etc/fstab
-```
-
-Use the keyboard arrows to move to the bottom. On a **new line**, paste **one** of the examples above, with **your actual UUID**, filesystem and (for exFAT) numeric user/group IDs. Keep the other existing lines as they are. There should be only one line for `/mnt/pinvr-recordings`.
-
-To save and exit Nano:
-
-1. Press **Ctrl + O** (letter O, not zero).
-2. Press **Enter** to confirm the filename.
-3. Press **Ctrl + X** to exit.
-
-**5. Check the entry and mount the drive.**
-
-```bash
-sudo systemctl daemon-reload
-sudo findmnt --verify --verbose
-sudo mount /mnt/pinvr-recordings
-findmnt /mnt/pinvr-recordings -o TARGET,SOURCE,FSTYPE,OPTIONS
-```
-
-**What success looks like:** `findmnt` shows `/mnt/pinvr-recordings` under **TARGET** and the correct external USB partition under **SOURCE**. The **FSTYPE** should match your drive.
-
-If `findmnt` prints nothing, or `mount` returns an error, **stop**. Double-check the UUID and filesystem in `/etc/fstab`. Do not enable recordings until the drive is correctly mounted. `already mounted` is fine only when it is mounted at the correct path.
-
-**6. Allow the PiNVR service to write recordings.**
-
-If the filesystem is **ext4**, run:
-
-```bash
-sudo chown pinvr:pinvr /mnt/pinvr-recordings
-sudo chmod 750 /mnt/pinvr-recordings
-```
-
-For **exFAT**, the `uid` and `gid` in the `fstab` line manage access, so skip those `chown`/`chmod` commands. For either filesystem, run this safe test; it creates and removes a tiny temporary file:
-
-```bash
-sudo -u pinvr sh -c 'touch /mnt/pinvr-recordings/.pinvr-write-test && rm /mnt/pinvr-recordings/.pinvr-write-test'
-```
-
-No output means the write test passed. If the command reports **Permission denied**, stop and fix access before recording. Avoid changing permissions recursively on a drive with existing files.
-
-**7. Restart the application and check it.**
-
-```bash
-sudo systemctl restart pinvr
-sudo systemctl status pinvr --no-pager
-findmnt /mnt/pinvr-recordings
-```
-
-The PiNVR service should say **active (running)** and the mounted USB drive should be listed. If not, read the latest error messages:
-
-```bash
-sudo journalctl -u pinvr -n 50 --no-pager
-```
-
-**8. Confirm the drive reconnects after a reboot.**
-
-When you can safely interrupt the Pi, run `sudo reboot`. Once it comes back, reconnect by SSH, then run:
-
-```bash
-findmnt /mnt/pinvr-recordings
-```
-
-If it shows the USB drive, the permanent mount worked. Finally, open PiNVR, enable recording for **one camera**, and check that a new clip appears under **Playback**.
-
-**If you get stuck:** Take a photo or copy the output of `lsblk -f` and `findmnt /mnt/pinvr-recordings`. Share those results **without passwords or camera credentials** so the correct `fstab` line can be worked out safely. If Linux reports an `fstab` error, your backup file from Step 2 can help restore the original configuration.
+- Make sure the USB cable and power supply are working. Try a USB 3.0 port (blue connector) on the Pi 4.
+- Select **Scan USB drives** again. If the list stays empty, the drive may use an unsupported filesystem or already be mounted elsewhere.
+- Do not unplug a recording drive while it is saving video.
+- If PiNVR shows a setup error, **leave the drive untouched** and review the error or ask for help. The app does not attempt to reformat or wipe it.
+- After a successful setup, reboot the Pi at a convenient time and check that the Storage status still says the drive is mounted.
 
 ### Add a camera
 
