@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: false
 permissions:
   contents: write
+  actions: write
 jobs:
   capture:
     runs-on: ubuntu-latest
@@ -53,3 +54,12 @@ jobs:
           done
           echo "Unable to publish screenshots after retries"
           exit 1
+      - name: Run verification on final main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A screenshot commit made with GITHUB_TOKEN does not normally
+          # trigger push workflows. Dispatch the test suite explicitly so
+          # the final HEAD receives its own verification check.
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/workflows/tests.yml/dispatches" -f ref=main
+          echo "Verification dispatched for the latest main commit"
