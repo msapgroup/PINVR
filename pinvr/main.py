@@ -180,6 +180,7 @@ class AlertDestination(BaseModel):
     enabled: bool = True
     motion: bool = True
     storage: bool = False
+    recording: bool = False
     cooldown_seconds: int = Field(default=120, ge=30, le=3600)
 
 
@@ -191,6 +192,7 @@ def public_alert_row(row):
         'enabled': bool(row['enabled']),
         'motion': 'motion' in row['events'].split(','),
         'storage': 'storage' in row['events'].split(','),
+        'recording': 'recording' in row['events'].split(','),
         'cooldown_seconds': row['cooldown_seconds'],
         'configured': True,
     }
@@ -659,7 +661,7 @@ def add_alert_destination(body:AlertDestination,u=Depends(require_admin)):
         notifications.validate_url(body.url)
     except ValueError as e:
         raise HTTPException(422,str(e))
-    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage)) if allowed)
+    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage),('recording',body.recording)) if allowed)
     if not events:
         raise HTTPException(422,'Choose at least one alert type')
     with connect() as db:
@@ -671,7 +673,7 @@ def add_alert_destination(body:AlertDestination,u=Depends(require_admin)):
 
 @app.put('/api/alerts/destinations/{dest_id}')
 def update_alert_destination(dest_id:int, body:AlertDestination,u=Depends(require_admin)):
-    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage)) if allowed)
+    events = ','.join(x for x,allowed in (('motion',body.motion),('storage',body.storage),('recording',body.recording)) if allowed)
     if not events:
         raise HTTPException(422,'Choose at least one alert type')
     with connect() as db:
