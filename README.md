@@ -24,6 +24,7 @@
 | Mobile Viewer — Playback | ![Phone Viewer Playback](screenshots/mobile-viewer-playback-new.jpg) | Viewer can find and play permitted recordings and JPG snapshots from a phone. |
 | Mobile — Sign In | ![Phone Login](screenshots/mobile-login-new.jpg) | Full-width touch-friendly sign-in form. |
 | Mobile (earlier desktop-responsive view) | ![Mobile view](screenshots/mobile-live.jpg) | Open the same server on Android Chrome or iPhone Safari and add to home screen; mobile interface shares server settings. |
+| Automatic Storage Cleanup | ![Recording Retention Rules](screenshots/desktop-storage-retention.png) | Admin chooses retention days, disk-usage threshold, minimum free space, and may manually clean eligible old files. Running clips and footage less than 15 minutes old are protected. |
 | USB Storage Setup | ![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png) | Admin scans supported external USB drives, chooses one and confirms; PiNVR mounts it and makes the mount persistent without Linux commands or formatting. |
 | Two-way audio — mobile | ![Mobile Talk](screenshots/mobile-push-to-talk.jpg) | Hold **Talk** to transmit microphone audio to a compatible camera speaker; tap **Listen** to enable camera audio in a focused stream. HTTPS and a supported audio backchannel are required. The sample screenshot uses demo cameras, not a real connected speaker. |
 | Two-way audio — Admin permissions | ![Viewer Talk Permissions](screenshots/desktop-viewer-talk-permissions.jpg) | Enable two-way audio per camera, then optionally grant **Allow Talk** to selected Viewer accounts (disabled by default). The screenshot illustrates the settings layout with demo accounts. |
@@ -172,6 +173,26 @@ Next, use **Devices → Add Camera**, enter a camera's IP address and RTSP conne
 | `nano` | A simple terminal-based text editor. |
 | `systemctl` | Starts, stops, and checks background services such as PiNVR. |
 
+### Keep the USB recording drive from filling up
+
+![Automatic recording retention and storage settings](screenshots/desktop-storage-retention.png)
+
+After mounting your USB recording drive, sign in as **Admin** and open **Settings → Recording Storage & Automatic Cleanup**. The recorder will check storage every five minutes when the USB drive is mounted.
+
+1. **Keep recordings for:** Choose how many days of video and JPG snapshots you want to retain (14 days by default).
+2. **Start cleaning at:** Choose the maximum disk usage (90% by default). PiNVR removes the **oldest eligible footage first** when this limit is reached, even if it has not yet reached the selected retention age.
+3. **Reserve free space:** Choose the minimum free disk space to keep available (5 GB by default).
+4. Click **Save Storage Rules**. Changes apply without restarting the Raspberry Pi.
+5. Use **Run Cleanup Now** to check the disk immediately. The result shows how many old files were deleted and how much space was recovered.
+
+**Important:** Deleted recordings cannot be restored by PiNVR. Back up any footage you want to keep separately. PiNVR only deletes its own recognized MP4/MKV clip and motion JPG names inside numbered camera folders. It skips files being actively written or modified in the previous **15 minutes**, symlinks, and unknown files. **If the recording drive disconnects, cleanup stops**, and the recording supervisor stops active continuous recorder processes rather than allowing them to write to the microSD card.
+
+### Login protection and storage safety
+
+PiNVR now temporarily blocks further login attempts for an account/source combination after eight failed attempts within ten minutes. This does not force a password change, but changing the publicly known initial password is strongly recommended. The existing Admin-only controls remain enforced server-side for storage rules, drive setup and user permissions.
+
+If the external USB drive becomes unavailable, continuous recording pauses and automatically resumes after the drive returns, assuming it is properly mounted. **Actual Raspberry Pi power-loss recovery and 9+ simultaneous camera throughput still require hardware testing.** Use an uninterruptible power supply (UPS) to help protect recordings from sudden power loss.
+
 ### Set up your USB recording drive — inside PiNVR (no Linux commands)
 
 ![Automatic USB Storage Setup](screenshots/desktop-storage-setup.png)
@@ -209,7 +230,7 @@ PiNVR can prepare your external USB drive for recordings right from the **Admin 
 5. Verify **Settings → Recording workers** is active and inspect `journalctl -u pinvr` if not.
 6. Select **Playback** to see completed 5-minute continuous recording segments or 30-second motion-event clips (when an event is received). The JPG gallery displays available snapshots.
 
-Recording uses `ffmpeg -c:v copy` without decoding to reduce Pi load. **MP4 with fragmented metadata is the default:** it is easier to view on iPhone, Android, and most browsers when the camera uses H.264, and has better interruption recovery than ordinary non-fragmented MP4. **MKV** is an alternative for resilient storage and VLC playback but generally downloads rather than playing natively in browsers. Neither container converts unsupported codecs; use camera-native H.264 where practical. <https://ffmpeg.org/ffmpeg-formats.html> Segment boundaries depend on keyframes, so durations may vary. The supervisor retries stopped recorder processes every 15 seconds. Disk retention management is **not implemented yet**: monitor free space to avoid exhaustion.
+Recording uses `ffmpeg -c:v copy` without decoding to reduce Pi load. **MP4 with fragmented metadata is the default:** it is easier to view on iPhone, Android, and most browsers when the camera uses H.264, and has better interruption recovery than ordinary non-fragmented MP4. **MKV** is an alternative for resilient storage and VLC playback but generally downloads rather than playing natively in browsers. Neither container converts unsupported codecs; use camera-native H.264 where practical. <https://ffmpeg.org/ffmpeg-formats.html> Segment boundaries depend on keyframes, so durations may vary. The supervisor retries stopped recorder processes every 15 seconds. Disk retention management is configured under **Settings → Recording Storage & Automatic Cleanup**. Free space and retention should still be monitored on a real Raspberry Pi.
 
 
 
