@@ -152,9 +152,11 @@ with sync_playwright() as p:
     screenshot(desktop,"rtsp-connection-test.png",full=True)
 
     go(desktop,"settings")
+    screenshot(desktop,"desktop-system-health.png",full=True)
     screenshot(desktop,"theme-selector-settings.png",full=True)
     scroll_card(desktop,"#retentionSettingsCard")
-    screenshot(desktop,"desktop-storage-retention.png",full=True)
+    screenshot(desktop,"desktop-storage-retention.png",
+ "desktop-system-health.png",full=True)
     for selector, path in [
         (".network-card","desktop-network.jpg"),
         ("#storageSetupCard","desktop-storage-setup.png"),
