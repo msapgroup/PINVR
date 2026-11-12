@@ -145,7 +145,7 @@ async function loadAlerts(){
   $('#alertDestinationList').innerHTML=saved.length?saved.map(item=>
     '<div class="alert-destination"><div><strong>'+escapeHTML(item.label)+'</strong>'+
     '<small>'+escapeHTML(item.provider.toUpperCase())+' · '+(item.enabled?'Enabled':'Disabled')+
-    ' · '+(item.motion?'Motion ':'')+(item.storage?'Storage ':'')+
+    ' · '+(item.motion?'Motion ':'')+(item.storage?'Storage ':'')+(item.recording?'Recording failures ':'')+
     ' · '+escapeHTML(item.cooldown_seconds)+'s cooldown</small></div>'+
     '<div class="actions"><button class="outline" data-alert-test="'+item.id+'">Send Test</button>'+
     '<button class="outline" data-alert-edit="'+item.id+'">Edit</button>'+
@@ -167,7 +167,7 @@ $('#alertDestinationList').addEventListener('click',async e=>{
    $('#alertProviderHelp').textContent=alertHelp[$('#alertProvider').value];
    $('#alertURL').value='';$('#alertURL').required=false;
    $('#alertURL').placeholder='Leave blank to keep saved credentials';
-   $('#alertMotion').checked=item.motion;$('#alertStorage').checked=item.storage;
+   $('#alertMotion').checked=item.motion;$('#alertStorage').checked=item.storage;$('#alertRecording').checked=!!item.recording;
    $('#alertCooldown').value=String(item.cooldown_seconds);
    if($('#alertCooldown').value==='')$('#alertCooldown').value='120';
    $('#alertEnabled').checked=item.enabled;
@@ -189,10 +189,10 @@ $('#alertDestinationList').addEventListener('click',async e=>{
 });
 $('#alertForm').onsubmit=async e=>{
  e.preventDefault();
- if(!$('#alertMotion').checked&&!$('#alertStorage').checked){toast('Choose at least one event type.');return}
+ if(!$('#alertMotion').checked&&!$('#alertStorage').checked&&!$('#alertRecording').checked){toast('Choose at least one event type.');return}
  const id=$('#alertEditId').value;
  const payload={label:$('#alertName').value.trim(),url:$('#alertURL').value.trim()||(id?'KEEP_EXISTING':''),
- enabled:$('#alertEnabled').checked,motion:$('#alertMotion').checked,storage:$('#alertStorage').checked,
+ enabled:$('#alertEnabled').checked,motion:$('#alertMotion').checked,storage:$('#alertStorage').checked,recording:$('#alertRecording').checked,
  cooldown_seconds:Number($('#alertCooldown').value)};
  try{
    await api('/api/alerts/destinations'+(id?'/'+id:''),{method:id?'PUT':'POST',body:JSON.stringify(payload)});
