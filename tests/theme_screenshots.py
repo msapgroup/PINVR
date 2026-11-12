@@ -59,7 +59,7 @@ window.fetch=async (url, options={})=>{
  path.includes('/api/events') ? [] : {};
  return {ok:true,status:200,json:async()=>data};
 };
-""".replace("ROLE",json.dumps("admin")).replace("CAMERAS",json.dumps(cameras))
+""".replace("CAMERAS",json.dumps(cameras))
 
 def screenshot(page, name, full=False):
     path = OUT / name
