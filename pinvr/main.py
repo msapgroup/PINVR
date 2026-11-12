@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion, storage, rtsp_test, notifications
+from pinvr import relay, motion, storage, rtsp_test, notifications, retention
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -39,6 +39,52 @@ SESSION_HOURS = 12
 PROCS = {}
 LOCK = threading.RLock()
 STOP = threading.Event()
+LOGIN_ATTEMPTS = {}
+LOGIN_LOCK = threading.RLock()
+LOGIN_WINDOW_SECONDS = 600
+LOGIN_MAX_FAILURES = 8
+LAST_CLEANUP = {"ok": None, "removed": 0, "bytes_freed": 0, "last_run": None}
+
+
+def check_login_limit(client, username):
+    key = (client, username.casefold())
+    now = time.monotonic()
+    with LOGIN_LOCK:
+        if len(LOGIN_ATTEMPTS) > 2000:
+            for k in list(LOGIN_ATTEMPTS):
+                if now - LOGIN_ATTEMPTS[k][-1] > LOGIN_WINDOW_SECONDS:
+                    del LOGIN_ATTEMPTS[k]
+        times = [t for t in LOGIN_ATTEMPTS.get(key, ()) if now - t < LOGIN_WINDOW_SECONDS]
+        LOGIN_ATTEMPTS[key] = times
+        if len(times) >= LOGIN_MAX_FAILURES:
+            raise HTTPException(429, 'Too many login attempts; try again in 10 minutes')
+
+
+def record_login_result(client, username, success):
+    key = (client, username.casefold())
+    now = time.monotonic()
+    with LOGIN_LOCK:
+        if success:
+            LOGIN_ATTEMPTS.pop(key, None)
+        else:
+            LOGIN_ATTEMPTS.setdefault(key, []).append(now)
+
+
+def retention_settings():
+    with connect() as db:
+        vals = dict(db.execute("SELECT key,value FROM settings WHERE key IN ('retention_days','max_used_percent','min_free_gb')"))
+    return {'retention_days': int(vals.get('retention_days', '14')),
+            'max_used_percent': int(vals.get('max_used_percent', '90')),
+            'min_free_gb': int(vals.get('min_free_gb', '5'))}
+
+
+def cleanup_recordings():
+    global LAST_CLEANUP
+    options = retention_settings()
+    LAST_CLEANUP = {**retention.prune(RECORDINGS, is_recording_mounted, **options),
+                    'last_run': int(time.time())}
+    return LAST_CLEANUP
+
 
 
 def connect():
@@ -275,11 +321,14 @@ def stop_recorder(cid):
 
 def reconcile():
     with LOCK:
+        if not is_recording_mounted():
+            for cid in list(PROCS):
+                stop_recorder(cid)
         with connect() as db:
             cams = [dict(x) for x in db.execute('SELECT * FROM cameras')]
         active_ids=set()
         for cam in cams:
-            if cam['recording'] and cam['enabled'] and cam['recording_mode']=='continuous':
+            if is_recording_mounted() and cam['recording'] and cam['enabled'] and cam['recording_mode']=='continuous':
                 active_ids.add(cam['id'])
                 p=PROCS.get(cam['id'])
                 if not p or p.poll() is not None:
@@ -292,9 +341,13 @@ def reconcile():
 
 def recording_worker():
     last_storage_warning = 0.0
+    last_cleanup = 0.0
     while not STOP.wait(15):
         try:
             reconcile()
+            if is_recording_mounted() and time.monotonic() - last_cleanup > 300:
+                last_cleanup = time.monotonic()
+                cleanup_recordings()
             with connect() as db:
                 any_recording = db.execute('SELECT 1 FROM cameras WHERE recording=1 AND enabled=1 LIMIT 1').fetchone()
             if any_recording and not is_recording_mounted() and time.monotonic()-last_storage_warning > 3600:
@@ -391,11 +444,16 @@ def me(u=Depends(require_user)):
 
 @app.post('/api/login')
 def login(body:Login,response:Response,request:Request):
+    client = request.client.host if request.client else 'unknown'
+    check_login_limit(client, body.username)
     with connect() as db:
         user=db.execute('SELECT * FROM users WHERE name=?',(body.username,)).fetchone()
         # Equalize verify work when user absent.
         valid=verify(body.password,user['hash'] if user else password_hash('random_not_valid'))
-        if not user or not valid: raise HTTPException(401,'Invalid credentials')
+        if not user or not valid:
+            record_login_result(client, body.username, False)
+            raise HTTPException(401,'Invalid credentials')
+        record_login_result(client, body.username, True)
         token=secrets.token_urlsafe(32)
         db.execute('INSERT INTO sessions VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),user['name'],int(time.time()+SESSION_HOURS*3600)))
         db.execute('DELETE FROM sessions WHERE expires<?',(int(time.time()),))
@@ -669,6 +727,30 @@ def update_network_settings(body:NetworkPort, u=Depends(require_admin)):
     return {'port':body.port,'previous_port':old,'restarting':True}
 
 
+class RetentionPolicy(BaseModel):
+    retention_days: int = Field(default=14, ge=1, le=3650)
+    max_used_percent: int = Field(default=90, ge=50, le=98)
+    min_free_gb: int = Field(default=5, ge=1, le=1000)
+
+
+@app.get('/api/retention')
+def get_retention(u=Depends(require_admin)):
+    return {**retention_settings(), 'last_cleanup': LAST_CLEANUP}
+
+
+@app.put('/api/retention')
+def update_retention(body:RetentionPolicy, u=Depends(require_admin)):
+    with connect() as db:
+        for key, value in body.model_dump().items():
+            db.execute('INSERT OR REPLACE INTO settings(key,value) VALUES (?,?)', (key, str(value)))
+    return {**retention_settings(), 'last_cleanup': LAST_CLEANUP}
+
+
+@app.post('/api/retention/run')
+def run_retention(u=Depends(require_admin)):
+    return cleanup_recordings()
+
+
 class StorageSelection(BaseModel):
     uuid: str = Field(min_length=3, max_length=128)
     current_password: str
@@ -713,7 +795,7 @@ def status(u=Depends(require_admin)):
     cpu_temp=None
     try: cpu_temp=round(int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())/1000,1)
     except (OSError,ValueError):pass
-    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
+    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'retention':LAST_CLEANUP,'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
 
 
 @app.get('/api/clips')
