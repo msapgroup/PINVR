@@ -45,7 +45,7 @@ PiNVR has **two built-in charcoal-dark themes**. The approved layout stays the s
 
 ![Theme settings](screenshots/theme-selector-settings.png)
 
-The **PiNVR shield-camera logo concept** appears at the top of the logged-in app and on the login screen, with a consistent **Powered By: MSAPGROUPLLC** footer. The logo is a first draft, not a claim of final design approval.
+**Final theme-matched PiNVR branding:** Dark Red / Charcoal displays the approved **red shield-and-camera logo**; Dark Blue / Charcoal displays the approved **blue shield-and-camera logo**. Both are used on the login screen, the logged-in header and mobile views. The matching icon also applies to the browser favicon and theme-specific PWA manifest. Every screen retains **Powered By: MSAPGROUPLLC** in the footer. On an already-installed home-screen shortcut, the launcher icon may need to be re-added after changing themes because phones cache PWA icons.
 
 | Login / mobile views | Screenshot |
 | --- | --- |
