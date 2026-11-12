@@ -359,6 +359,27 @@ def js(): return FileResponse(STATIC/'app.js',media_type='text/javascript')
 def manifest(): return FileResponse(STATIC/'manifest.webmanifest',media_type='application/manifest+json')
 
 
+@app.get('/brand-logo-{theme}.png')
+def themed_brand_logo(theme:str):
+    if theme not in ('red','blue'):
+        raise HTTPException(404,'Unknown logo style')
+    return FileResponse(STATIC/f'brand-logo-{theme}.png',media_type='image/png')
+
+
+@app.get('/brand-icon-{theme}.png')
+def themed_brand_icon(theme:str):
+    if theme not in ('red','blue'):
+        raise HTTPException(404,'Unknown icon style')
+    return FileResponse(STATIC/f'brand-icon-{theme}.png',media_type='image/png')
+
+
+@app.get('/manifest-{theme}.webmanifest')
+def themed_manifest(theme:str):
+    if theme not in ('red','blue'):
+        raise HTTPException(404,'Unknown theme manifest')
+    return FileResponse(STATIC/f'manifest-{theme}.webmanifest',media_type='application/manifest+json')
+
+
 @app.get('/icon.svg')
 def icon(): return FileResponse(STATIC/'icon.svg',media_type='image/svg+xml')
 
