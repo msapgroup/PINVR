@@ -87,7 +87,7 @@ def boot(browser, role="admin", mobile=False):
     errors = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
     page.set_content(html)
-    page.evaluate(fixture.replace('"admin"',json.dumps(role),1))
+    page.evaluate(fixture.replace('window.__PINVR_ROLE__ = ROLE;', 'window.__PINVR_ROLE__ = '+json.dumps(role)+';'))
     page.add_script_tag(content=js)
     page.locator("#console").wait_for(state="visible", timeout=7000)
     page.wait_for_timeout(160)
