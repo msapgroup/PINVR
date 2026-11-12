@@ -50,6 +50,7 @@ window.fetch=async (url, options={})=>{
  path.includes('/api/users') ? [{username:'Admin',name:'Admin',role:'admin',must_change:false,talk_allowed:true},
  {username:'FamilyViewer',name:'FamilyViewer',role:'viewer',must_change:false,talk_allowed:false},
  {username:'FrontDesk',name:'FrontDesk',role:'viewer',must_change:false,talk_allowed:true}] :
+ path.includes('/api/retention') ? {retention_days:14,max_used_percent:90,min_free_gb:5,last_cleanup:{ok:true,removed:0,bytes_freed:0,last_run:null}} :
  path.includes('/api/alerts/destinations') ? [] :
  path.includes('/api/network') ? {port:8080,managed:true} :
  path.includes('/api/storage/drives') ? {drives:[],current:{mounted:false}} :
@@ -152,6 +153,8 @@ with sync_playwright() as p:
 
     go(desktop,"settings")
     screenshot(desktop,"theme-selector-settings.png",full=True)
+    scroll_card(desktop,"#retentionSettingsCard")
+    screenshot(desktop,"desktop-storage-retention.png",full=True)
     for selector, path in [
         (".network-card","desktop-network.jpg"),
         ("#storageSetupCard","desktop-storage-setup.png"),
@@ -209,6 +212,7 @@ expected={
  "theme-red-login.png","theme-blue-login.png","theme-red-mobile.png",
  "theme-blue-mobile.png","rtsp-connection-test.png",
  "alerts-notifications-settings.png","desktop-password-reminder.jpg",
+ "desktop-storage-retention.png",
  "mobile-viewer-playback.jpg"
 }
 missing=[name for name in expected if not (OUT/name).exists()]
