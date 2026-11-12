@@ -5,6 +5,7 @@ actual NVR instance are required. Run from the repository root with Playwright.
 """
 from pathlib import Path
 import json
+import base64
 from playwright.sync_api import sync_playwright
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -15,6 +16,13 @@ css=(ROOT/'static/app.css').read_text()
 js=(ROOT/'static/app.js').read_text()
 html=html.replace('<link rel="stylesheet" href="/app.css">','<style>'+css+'</style>')
 html=html.replace('<script src="/app.js" defer></script>','')
+# Screenshots run without an HTTP server. Embed the *real* approved theme PNGs
+# so the captured login/header images match what the running app serves.
+for color in ('red', 'blue'):
+    logo=(ROOT/'static'/f'brand-logo-{color}.png').read_bytes()
+    html=html.replace(f'src="/brand-logo-{color}.png"',
+        'src="data:image/png;base64,'+base64.b64encode(logo).decode()+'"')
+
 names=['Driveway','Front Door','Garage','Side Gate','Backyard','Rear Gate','Parking Lot','Front Street','Workshop','Storage Room','Office','Server Room']
 cams=[{'id':i+1,'name':name,'host':f'192.168.1.{101+i}',
        'recording':False,'enabled':True,'active':False,'username':'',
@@ -49,6 +57,12 @@ with sync_playwright() as playwright:
     desktop.screenshot(path=str(OUT/'theme-red-login.png'),full_page=True)
     desktop.evaluate("document.documentElement.dataset.theme='blue'")
     desktop.screenshot(path=str(OUT/'theme-blue-login.png'),full_page=True)
+    assert desktop.locator('.auth-card .logo-blue').is_visible()
+    assert not desktop.locator('.auth-card .logo-red').is_visible()
+    desktop.evaluate("document.documentElement.dataset.theme='red'")
+    assert desktop.locator('.auth-card .logo-red').is_visible()
+    assert not desktop.locator('.auth-card .logo-blue').is_visible()
+
     desktop.evaluate(mock)
     desktop.add_script_tag(content=js)
     desktop.wait_for_timeout(900)
