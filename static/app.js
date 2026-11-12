@@ -5,6 +5,10 @@ const THEME_KEY='pinvr-color-theme';
 function chooseTheme(value){
  const theme=value==='blue'?'blue':'red';
  document.documentElement.dataset.theme=theme;
+ const favicon=document.querySelector('link[rel="icon"]');
+ if(favicon){favicon.href='/brand-icon-'+theme+'.png';favicon.type='image/png';}
+ const manifest=document.querySelector('link[rel="manifest"]');
+ if(manifest)manifest.href='/manifest-'+theme+'.webmanifest';
  for(const select of ['#loginTheme','#settingsTheme']){
   const el=$(select);if(el)el.value=theme;
  }
