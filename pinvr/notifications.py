@@ -96,6 +96,9 @@ def dispatch(destinations, event_type, camera_name=None):
         elif event_type == "storage":
             title = "PiNVR: Recording storage offline"
             message = "USB recording drive is not mounted. Check recording storage."
+        elif event_type == "recording":
+            title = "PiNVR: Camera recording failed"
+            message = f"Repeated recording failures on {camera_name or 'camera'}. Check the camera stream and recorder health."
         else:
             continue
         try:
