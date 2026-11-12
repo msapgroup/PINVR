@@ -44,6 +44,7 @@ LOGIN_LOCK = threading.RLock()
 LOGIN_WINDOW_SECONDS = 600
 LOGIN_MAX_FAILURES = 8
 LAST_CLEANUP = {"ok": None, "removed": 0, "bytes_freed": 0, "last_run": None}
+RECORDER_FAILURES = {}
 
 
 def check_login_limit(client, username):
@@ -332,8 +333,19 @@ def reconcile():
                 active_ids.add(cam['id'])
                 p=PROCS.get(cam['id'])
                 if not p or p.poll() is not None:
-                    if p: PROCS.pop(cam['id'],None)
-                    run_recorder(cam)
+                    if p:
+                        PROCS.pop(cam['id'], None)
+                        failures = RECORDER_FAILURES.get(cam['id'], 0) + 1
+                        RECORDER_FAILURES[cam['id']] = failures
+                        if failures >= 3 and failures % 20 == 3:
+                            alert_destinations('recording', cam['name'])
+                    started = run_recorder(cam)
+                    if not started:
+                        RECORDER_FAILURES[cam['id']] = RECORDER_FAILURES.get(cam['id'], 0) + 1
+                else:
+                    # A healthy process is not necessarily writing good video;
+                    # use file freshness monitoring in the next hardware test.
+                    pass
         for cid in list(PROCS):
             if cid not in active_ids: stop_recorder(cid)
     motion.configure(cams, rtsp_url, trigger_motion)
@@ -795,7 +807,7 @@ def status(u=Depends(require_admin)):
     cpu_temp=None
     try: cpu_temp=round(int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())/1000,1)
     except (OSError,ValueError):pass
-    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'retention':LAST_CLEANUP,'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
+    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'retention':LAST_CLEANUP,'recording_failures':dict(RECORDER_FAILURES),'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
 
 
 @app.get('/api/clips')
