@@ -35,7 +35,7 @@ $('#reminderLater').onclick=()=>{$('#passwordReminder').hidden=true};
 $('#reminderChange').onclick=$('#accountPassword').onclick=()=>showAuth(true);
 $('#cancelPasswordChange').onclick=()=>enter();
 $('#logout').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST'})}catch(e){}showAuth()});
-function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives();loadAlerts()}}
+function showPage(p){stopTalking();if(p!=='live')setListening(false);if(user?.role==='viewer'&&!['live','playback'].includes(p))return;if(p!=='live')closePeers();$$('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));$$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.page===p));$$('[data-mobile-page]').forEach(x=>{const active=x.dataset.mobilePage===p;x.classList.toggle('active',active);if(active)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current')});if(p==='playback'){loadClips();loadSnapshots()}if(p==='events')loadMotionEvents();if(p==='settings'){loadStatus();loadNetwork();loadUsers();loadStorageDrives();loadAlerts();loadRetention()}}
 $$('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
 $$('[data-mobile-page]').forEach(b=>b.addEventListener('click',()=>{showPage(b.dataset.mobilePage);window.scrollTo({top:0,behavior:'instant'})}));
 if(phoneLayout()){$$('[data-layout]').forEach(x=>x.classList.toggle('active',Number(x.dataset.layout)===4));}
@@ -207,6 +207,43 @@ $('#networkForm').addEventListener('submit',async e=>{e.preventDefault();const p
 async function loadUsers(){if(user?.role!=='admin')return;try{const members=await api('/api/users');$('#userList').innerHTML=members.map(m=>`<div class="user-row"><div><b>${escapeHTML(m.username)}</b><small>${m.role==='admin'?'Admin · Full Control':'Viewer · Live Cameras & Playback'}${m.must_change?' · Password change recommended':''}</small></div>${m.role==='viewer'?`<div class="actions"><button class="outline" data-talk-user="${escapeHTML(m.username)}" data-talk-allowed="${m.talk_allowed?1:0}">${m.talk_allowed?'Disable Talk':'Allow Talk'}</button><button class="outline" data-user-reset="${escapeHTML(m.username)}">Reset Password</button><button class="outline" data-user-delete="${escapeHTML(m.username)}">Remove</button></div>`:'<span class="tag">Protected</span>'}</div>`).join('')}catch(e){toast(e.message)}}
 $('#viewerForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/users',{method:'POST',body:JSON.stringify({username:$('#viewerUsername').value.trim(),password:$('#viewerPassword').value,talk_allowed:$('#viewerTalkAllowed').checked})});$('#viewerForm').reset();toast('Viewer created; password-change recommendation will appear at login');await loadUsers()}catch(err){toast(err.message)}};
 $('#userList').onclick=async e=>{const reset=e.target.closest('[data-user-reset]'),del=e.target.closest('[data-user-delete]'),talk=e.target.closest('[data-talk-user]');if(talk){const name=talk.dataset.talkUser;const allow=talk.dataset.talkAllowed!=='1';if(!confirm((allow?'Allow ':'Disable ')+'Talk for '+name+'?'))return;try{await api('/api/users/'+encodeURIComponent(name)+'/talk',{method:'PUT',body:JSON.stringify({talk_allowed:allow})});toast('Viewer Talk permission changed');await loadUsers()}catch(err){toast(err.message)}return}if(reset){const name=reset.dataset.userReset;const pw=prompt('New temporary password for '+name+' (12+ characters):');if(pw===null)return;try{await api('/api/users/'+encodeURIComponent(name)+'/password',{method:'PUT',body:JSON.stringify({password:pw})});toast('Password reset; viewer sessions revoked');await loadUsers()}catch(err){toast(err.message)}}if(del){const name=del.dataset.userDelete;if(!confirm('Remove viewer '+name+' and revoke their sessions?'))return;try{await api('/api/users/'+encodeURIComponent(name),{method:'DELETE'});toast('Viewer removed');await loadUsers()}catch(err){toast(err.message)}}};
+async function loadRetention(){
+ try{
+  const data=await api('/api/retention');
+  $('#retentionDays').value=String(data.retention_days);
+  $('#retentionMaxUsage').value=String(data.max_used_percent);
+  $('#retentionReserve').value=String(data.min_free_gb);
+  const prior=data.last_cleanup||{};
+  $('#retentionHealth').textContent=prior.last_run?
+    'Last cleanup: '+new Date(prior.last_run*1000).toLocaleString()+
+    ' · '+prior.removed+' old files removed · '+(prior.bytes_freed/1e9).toFixed(2)+' GB freed':
+    'Cleanup checks run every 5 minutes when your external recording drive is mounted.';
+ }catch(err){$('#retentionHealth').textContent='Storage rules: '+err.message}
+}
+$('#retentionForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ try{
+  await api('/api/retention',{method:'PUT',body:JSON.stringify({
+   retention_days:Number($('#retentionDays').value),
+   max_used_percent:Number($('#retentionMaxUsage').value),
+   min_free_gb:Number($('#retentionReserve').value)
+  })});
+  toast('Storage retention rules saved');await loadRetention();
+ }catch(err){toast('Storage rules: '+err.message)}
+});
+$('#runCleanup').addEventListener('click',async()=>{
+ if(!confirm('Permanently delete eligible oldest recordings now according to the saved storage rules?'))return;
+ const button=$('#runCleanup');button.disabled=true;
+ try{
+  const result=await api('/api/retention/run',{method:'POST'});
+  $('#retentionHealth').textContent=result.ok?
+    'Cleanup complete: '+result.removed+' old files removed, '+(result.bytes_freed/1e9).toFixed(2)+' GB freed.':
+    'Cleanup skipped: '+(result.reason||'USB recording drive unavailable');
+  await loadStatus();
+ }catch(err){toast('Cleanup failed: '+err.message)}
+ finally{button.disabled=false}
+});
+
 async function loadStorageDrives(){
  const select=$('#usbDrive');
  $('#driveSetupStatus').textContent='Checking connected USB drives…';
