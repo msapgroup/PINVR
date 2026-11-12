@@ -73,12 +73,12 @@ In the **Admin Settings → Alerts & Notifications** section, you can send alert
 
 1. Choose a **Destination name** such as *Family phone*.
 2. Select the provider and follow the example service-URL instructions below the selector.
-3. Enter the provider URL/credentials, then enable **Motion detected** and/or **USB recording storage unavailable**.
+3. Enter the provider URL/credentials, then enable **Motion detected**, **USB recording storage unavailable**, and/or **Camera recording repeatedly fails**.
 4. Choose a cooldown (two minutes is the default), then select **Save Alert Destination**.
 5. Click **Send Test** in the saved destination card, and confirm the alert arrives in the selected phone or email app.
 6. Repeat to add multiple phones or notification services. Each destination can be enabled, disabled, edited or removed.
 
-Motion messages are dispatched after PiNVR detects movement. Storage-offline alerts are attempted at most once an hour when recording is enabled. Per-destination cooldowns help prevent repeated motion notifications. Your camera videos and JPG images **are not currently attached to outgoing messages**; they remain in PiNVR Playback. Notifications may fail when the Pi has no network connection or the provider rejects its credentials. The service URLs are not returned to the app after saving. Keep secrets private, and use a private topic/token rather than a publicly discoverable ntfy topic.
+Motion messages are dispatched after PiNVR detects movement. Storage-offline alerts are attempted at most once an hour when recording is enabled. PiNVR can also alert an Admin if a camera's continuous recording process repeatedly crashes. Select **Camera recording repeatedly fails** in the notification destination form. Per-destination cooldowns help prevent repeated motion notifications. Your camera videos and JPG images **are not currently attached to outgoing messages**; they remain in PiNVR Playback. Notifications may fail when the Pi has no network connection or the provider rejects its credentials. The service URLs are not returned to the app after saving. Keep secrets private, and use a private topic/token rather than a publicly discoverable ntfy topic.
 
 This is server-based alert delivery: **your phone does not have to keep the PiNVR browser tab open** to receive an alert from your chosen provider's mobile app. Use your VPN to open PiNVR for playback; do not forward NVR ports publicly.
 
