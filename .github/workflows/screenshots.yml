@@ -31,11 +31,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add screenshots/theme-* screenshots/alerts-notifications-settings.png screenshots/rtsp-connection-test.png
+          git add screenshots/
           if git diff --cached --quiet; then
             echo "Screenshots already current"
           else
-            git commit -m "docs: refresh PiNVR theme, alerts and RTSP screenshots"
+            git commit -m "docs: refresh all PiNVR screenshots with final theme logos"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
