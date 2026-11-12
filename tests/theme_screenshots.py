@@ -136,6 +136,9 @@ with sync_playwright() as p:
     desktop.locator("#camName").fill("Front Driveway")
     desktop.locator("#camHost").fill("192.168.1.101")
     screenshot(desktop,"desktop-cameras.jpg",full=True)
+    desktop.locator("#camMode").select_option("continuous")
+    desktop.locator("#camFormat").select_option("mkv")
+    desktop.locator("#camSnapshots").select_option("5")
     screenshot(desktop,"desktop-recording-options.jpg",full=True)
     desktop.locator("#camMotionDetect").check()
     desktop.locator("#camMode").select_option("motion")
@@ -156,6 +159,8 @@ with sync_playwright() as p:
         ("#viewerForm","desktop-users.jpg"),
         ("#viewerForm","desktop-viewer-talk-permissions.jpg")]:
         scroll_card(desktop,selector)
+        if path=="desktop-viewer-talk-permissions.jpg":
+            desktop.locator("#viewerTalkAllowed").check()
         screenshot(desktop,path)
     desktop.close()
 
@@ -175,6 +180,8 @@ with sync_playwright() as p:
         screenshot(phone,"mobile-"+role+"-live-new.jpg",full=True)
         if role=="admin":
             screenshot(phone,"mobile-live.jpg",full=True)
+            phone.locator("#focus").click()
+            phone.locator("#talkPanel").scroll_into_view_if_needed()
             screenshot(phone,"mobile-push-to-talk.jpg",full=True)
         else:
             screenshot(phone,"mobile-viewer.jpg",full=True)
