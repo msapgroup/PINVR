@@ -30,7 +30,7 @@
 <label style="grid-column:1/-1">Provider URL / credentials<input id="alertURL" type="password" autocomplete="off" placeholder="Example: ntfy://your-private-topic" minlength="8" required></label>
 <p id="alertProviderHelp" class="muted" style="grid-column:1/-1">For ntfy, create a private topic and subscribe to it on your phone. Use ntfy://YOUR_PRIVATE_TOPIC. Keep topics and tokens secret.</p>
 <label class="checkbox"><input type="checkbox" id="alertMotion" checked> Motion detected</label>
-<label class="checkbox"><input type="checkbox" id="alertStorage"> USB recording storage unavailable (experimental)</label>
+<label class="checkbox"><input type="checkbox" id="alertStorage"> USB recording drive unavailable</label><label class="checkbox"><input type="checkbox" id="alertRecording"> Camera recording repeatedly fails</label>
 <label>Minimum interval per camera & destination<select id="alertCooldown"><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120" selected>2 minutes (recommended)</option><option value="300">5 minutes</option><option value="900">15 minutes</option></select></label>
 <label class="checkbox"><input type="checkbox" id="alertEnabled" checked> Enable destination</label>
 <div class="formfooter"><button type="submit" class="redbutton compact" id="saveAlertDestination">Save Alert Destination</button><button type="button" id="resetAlertForm" class="outline">Clear form</button></div>
