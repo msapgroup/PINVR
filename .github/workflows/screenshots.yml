@@ -7,6 +7,9 @@ on:
       - 'tests/theme_screenshots.py'
       - '.github/workflows/screenshots.yml'
   workflow_dispatch:
+concurrency:
+  group: pinvr-screenshots-main
+  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
@@ -31,11 +34,22 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add screenshots/
-          if git diff --cached --quiet; then
-            echo "Screenshots already current"
-          else
-            git commit -m "docs: refresh all PiNVR screenshots with final theme logos"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          fi
+          # Keep newly rendered files in the working directory while moving
+          # onto the latest main branch. Never rebase binary screenshot commits.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git reset --mixed origin/main
+            git add screenshots/
+            if git diff --cached --quiet; then
+              echo "Screenshots already current"
+              exit 0
+            fi
+            git commit -m "docs: refresh PiNVR screenshots from current interface"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main changed during upload; retrying on latest"
+            sleep 2
+          done
+          echo "Unable to publish screenshots after retries"
+          exit 1
