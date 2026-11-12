@@ -200,3 +200,26 @@ html[data-theme="blue"] .talk-panel,html[data-theme="blue"] .rtsp-test-panel{bor
  .auth-card .brand-copy{font-size:24px}
  .console-powered{margin-bottom:0;padding-bottom:14px}
 }
+
+
+/* Final brand identity: Red theme uses red artwork; Blue theme uses blue artwork.
+   These are the approved full-color PNG logos, not accent-tinted SVG substitutes. */
+.brand{gap:0;overflow:visible}
+.brand-logo{display:block;object-fit:contain;object-position:left center;height:auto;max-width:100%}
+.brand .logo-red,.brand .logo-blue{width:210px}
+html:not([data-theme="blue"]) .brand .logo-blue{display:none}
+html[data-theme="blue"] .brand .logo-red{display:none}
+.auth-card .brand{justify-content:center;margin-bottom:7px}
+.auth-card .brand .brand-logo{width:min(100%,330px);height:auto}
+.header .brand{flex:0 0 auto;max-width:230px}
+.header .brand .brand-logo{max-width:100%}
+@media(max-width:1100px){
+ .header .brand{max-width:170px}
+ .header .brand .brand-logo{width:170px}
+}
+@media(max-width:680px){
+ .header .brand{max-width:min(38vw,155px)}
+ .header .brand .brand-logo{width:100%;max-width:155px}
+ .auth-card .brand{max-width:100%}
+ .auth-card .brand .brand-logo{width:min(100%,320px)}
+}
