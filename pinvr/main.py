@@ -40,6 +40,8 @@ PROCS = {}
 LOCK = threading.RLock()
 STOP = threading.Event()
 LOGIN_ATTEMPTS = {}
+LOGIN_CLIENT_ATTEMPTS = {}
+LOGIN_CLIENT_MAX_FAILURES = 40
 LOGIN_LOCK = threading.RLock()
 LOGIN_WINDOW_SECONDS = 600
 LOGIN_MAX_FAILURES = 8
@@ -57,6 +59,10 @@ def check_login_limit(client, username):
                     del LOGIN_ATTEMPTS[k]
         times = [t for t in LOGIN_ATTEMPTS.get(key, ()) if now - t < LOGIN_WINDOW_SECONDS]
         LOGIN_ATTEMPTS[key] = times
+        global_times = [t for t in LOGIN_CLIENT_ATTEMPTS.get(client, ()) if now - t < LOGIN_WINDOW_SECONDS]
+        LOGIN_CLIENT_ATTEMPTS[client] = global_times
+        if len(global_times) >= LOGIN_CLIENT_MAX_FAILURES:
+            raise HTTPException(429, 'Too many login attempts from this device; try again later')
         if len(times) >= LOGIN_MAX_FAILURES:
             raise HTTPException(429, 'Too many login attempts; try again in 10 minutes')
 
@@ -69,6 +75,7 @@ def record_login_result(client, username, success):
             LOGIN_ATTEMPTS.pop(key, None)
         else:
             LOGIN_ATTEMPTS.setdefault(key, []).append(now)
+            LOGIN_CLIENT_ATTEMPTS.setdefault(client, []).append(now)
 
 
 def retention_settings():
@@ -139,6 +146,9 @@ def verify(password, encoded):
         return hmac.compare_digest(check, base64.b64decode(digest))
     except (ValueError, TypeError):
         return False
+
+
+UNKNOWN_LOGIN_HASH = password_hash('pi-nvr-fake-account-password')
 
 
 def require_user(request: Request):
@@ -463,7 +473,7 @@ def login(body:Login,response:Response,request:Request):
     with connect() as db:
         user=db.execute('SELECT * FROM users WHERE name=?',(body.username,)).fetchone()
         # Equalize verify work when user absent.
-        valid=verify(body.password,user['hash'] if user else password_hash('random_not_valid'))
+        valid=verify(body.password,user['hash'] if user else UNKNOWN_LOGIN_HASH)
         if not user or not valid:
             record_login_result(client, body.username, False)
             raise HTTPException(401,'Invalid credentials')
