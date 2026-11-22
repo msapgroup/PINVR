@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion, storage, rtsp_test, notifications, retention, recording_health
+from pinvr import relay, motion, storage, rtsp_test, notifications, retention, recording_health, onvif_ptz
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -176,6 +176,8 @@ def init_db():
         if 'motion_detection' not in [c['name'] for c in db.execute('PRAGMA table_info(cameras)')]:
             db.execute("ALTER TABLE cameras ADD COLUMN motion_detection INTEGER NOT NULL DEFAULT 0")
         if 'talk_enabled' not in camera_cols: db.execute("ALTER TABLE cameras ADD COLUMN talk_enabled INTEGER NOT NULL DEFAULT 0")
+        if 'ptz_enabled' not in camera_cols: db.execute("ALTER TABLE cameras ADD COLUMN ptz_enabled INTEGER NOT NULL DEFAULT 0")
+        if 'onvif_port' not in camera_cols: db.execute("ALTER TABLE cameras ADD COLUMN onvif_port INTEGER NOT NULL DEFAULT 80")
         if 'motion_sensitivity' not in [c['name'] for c in db.execute('PRAGMA table_info(cameras)')]:
             db.execute("ALTER TABLE cameras ADD COLUMN motion_sensitivity INTEGER NOT NULL DEFAULT 5")
         db.execute('CREATE TABLE IF NOT EXISTS motion_tokens (camera_id INTEGER PRIMARY KEY, token_hash TEXT NOT NULL)')
@@ -313,6 +315,8 @@ class Camera(BaseModel):
     recording_mode: str = Field(default='continuous', pattern='^(continuous|motion|off)$')
     motion_detection: bool = False
     talk_enabled: bool = False
+    ptz_enabled: bool = False
+    onvif_port: int = Field(default=80,ge=1,le=65535)
     motion_sensitivity: int = Field(default=5, ge=1, le=10)
     enabled: bool = True
 
@@ -341,6 +345,8 @@ def camera_row(row):
     d['recording_mode'] = row['recording_mode']
     d['motion_detection'] = bool(row['motion_detection'])
     d['talk_enabled'] = bool(row['talk_enabled'])
+    d['ptz_enabled'] = bool(row['ptz_enabled'])
+    d['onvif_port'] = int(row['onvif_port'])
     d['motion_sensitivity'] = row['motion_sensitivity']
     d['enabled'] = bool(row['enabled'])
     d['active'] = row['id'] in PROCS and PROCS[row['id']].poll() is None
@@ -610,9 +616,10 @@ def test_rtsp_connection(body:CameraConnectionTest, u=Depends(require_admin)):
 def add_camera(cam:Camera,u=Depends(require_admin)):
     validate_cam(cam)
     with connect() as db:
-        cur=db.execute('INSERT INTO cameras(name,host,main_path,sub_path,username,password,recording,enabled,created_at,record_format,snapshot_count,recording_mode,motion_detection,motion_sensitivity,talk_enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password,int(cam.recording),int(cam.enabled),datetime.now(timezone.utc).isoformat(),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled)))
+        cur=db.execute('INSERT INTO cameras(name,host,main_path,sub_path,username,password,recording,enabled,created_at,record_format,snapshot_count,recording_mode,motion_detection,motion_sensitivity,talk_enabled,ptz_enabled,onvif_port) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password,int(cam.recording),int(cam.enabled),datetime.now(timezone.utc).isoformat(),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled),int(cam.ptz_enabled),cam.onvif_port))
         cid=cur.lastrowid
     reconcile()
+    onvif_ptz.CACHE.clear()
     refresh_relay()
     return {'id':cid}
 
@@ -625,7 +632,7 @@ def edit_camera(cid:int,cam:Camera,u=Depends(require_admin)):
             old=db.execute('SELECT password FROM cameras WHERE id=?',(cid,)).fetchone()
             if not old: raise HTTPException(404,'Camera not found')
             stop_recorder(cid)
-            db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=?,record_format=?,snapshot_count=?,recording_mode=?,motion_detection=?,motion_sensitivity=?,talk_enabled=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled),cid))
+            db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=?,record_format=?,snapshot_count=?,recording_mode=?,motion_detection=?,motion_sensitivity=?,talk_enabled=?,ptz_enabled=?,onvif_port=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled),int(cam.ptz_enabled),cam.onvif_port,cid))
         reconcile()
         refresh_relay()
     return {'id':cid}
@@ -642,6 +649,22 @@ def delete_camera(cid:int,u=Depends(require_admin)):
     reconcile()
     refresh_relay()
     return {'ok':True,'note':'Recorded clips are preserved on disk'}
+
+
+class PTZCommand(BaseModel):
+    direction: str = Field(pattern="^(left|right|up|down|zoom_in|zoom_out|stop)$")
+
+
+@app.post('/api/cameras/{cid}/ptz')
+def camera_ptz(cid:int,body:PTZCommand,u=Depends(require_admin)):
+    with connect() as db:
+        r=db.execute('SELECT * FROM cameras WHERE id=? AND enabled=1',(cid,)).fetchone()
+    if not r or not r['ptz_enabled']:
+        raise HTTPException(403,'PTZ not enabled for this camera')
+    try:
+        return onvif_ptz.move(dict(r),body.direction)
+    except onvif_ptz.CameraPTZError as exc:
+        raise HTTPException(422,str(exc)) from None
 
 
 @app.get('/api/onvif/discover')
