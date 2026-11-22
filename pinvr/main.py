@@ -103,7 +103,51 @@ def cleanup_recordings():
     options = retention_settings()
     LAST_CLEANUP = {**retention.prune(RECORDINGS, is_recording_mounted, **options),
                     'last_run': int(time.time())}
+    if LAST_CLEANUP.get('ok'):
+        LAST_CLEANUP['events_removed'] = cleanup_orphaned_motion_events()
     return LAST_CLEANUP
+
+
+def cleanup_orphaned_motion_events():
+    """Delete stale history only when neither its clip nor JPG burst exists."""
+    if not is_recording_mounted():
+        return 0
+    removed = 0
+    earliest = int(time.time()) - 900
+    with connect() as db:
+        stale = [dict(r) for r in db.execute(
+            'SELECT id,camera_id,created_at,clip_name FROM motion_events WHERE created_at<? ORDER BY id LIMIT 1000',
+            (earliest,))]
+        for event in stale:
+            if not is_recording_mounted():
+                break
+            folder = RECORDINGS / str(event['camera_id'])
+            clip = folder / event['clip_name'] if event['clip_name'] else None
+            if clip is not None and clip.is_file() and not clip.is_symlink():
+                continue
+            # Legacy events were timestamped at the end of clip/JPG capture;
+            # search a narrow window to avoid dropping still-valid JPG bursts.
+            start = event['created_at'] - 180
+            snaps = folder / 'snapshots'
+            found = False
+            if snaps.is_dir() and not snaps.is_symlink():
+                try:
+                    for img in snaps.iterdir():
+                        if img.is_symlink() or not img.is_file() or not retention.JPG.fullmatch(img.name):
+                            continue
+                        try:
+                            ts = int(datetime.strptime(img.name[:15],'%Y%m%d-%H%M%S').replace(tzinfo=timezone.utc).timestamp())
+                            if start <= ts <= event['created_at'] + 5:
+                                found = True
+                                break
+                        except ValueError:
+                            continue
+                except OSError:
+                    continue
+            if not found:
+                db.execute('DELETE FROM motion_events WHERE id=?',(event['id'],))
+                removed += 1
+    return removed
 
 
 
