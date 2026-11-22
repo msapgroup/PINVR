@@ -11,6 +11,9 @@
 | Screen | Preview | What it does |
 | --- | --- | --- |
 | Desktop Live View | ![Live view](screenshots/desktop-live.jpg) | Camera tree, layout choices (1/4/9/12/16), focus selected camera, recording status. WebRTC streams activate for up to four visible cameras at a time; clicking Focus loads the selected main stream. The documentation screenshots use example cameras and placeholders. |
+| Paged Live Camera Wall | ![Camera groups](screenshots/desktop-camera-pages.png) | View all configured cameras in groups of up to four simultaneous WebRTC previews, using Previous/Next without blank 12-camera tiles. Focus switches to selected main stream. |
+| ONVIF Discovery | ![ONVIF Discovery](screenshots/desktop-onvif-discovery.png) | Find discoverable cameras on the local network and select one to prefill its IP before entering RTSP login/paths. Discovery does not guess vendor passwords or claim automatic profile configuration. |
+| ONVIF PTZ Controls | ![ONVIF PTZ](screenshots/desktop-ptz-controls.png) | Admin-only bounded Pan/Tilt/Zoom commands on compatible cameras, disabled by default and requiring enabled ONVIF and credentials. |
 | Camera Management | ![Camera management](screenshots/desktop-cameras.jpg) | Add, edit and remove RTSP IP cameras; specify main/substream RTSP paths and enable recording. |
 | Playback | ![Playback](screenshots/desktop-playback.jpg) | Search MP4/MKV segments and JPG snapshots by camera. MP4 playback works with supported browser codecs; MKV is offered as a download. Requires mounted storage. |
 | Recording formats and JPG settings | ![Recording options](screenshots/desktop-recording-options.jpg) | Set continuous or motion-triggered recording, choose MP4/MKV, set 1–7 JPG snapshots per event, and test motion. |
@@ -55,6 +58,32 @@ PiNVR has **two built-in charcoal-dark themes**. The approved layout stays the s
 | Blue login | ![Blue login](screenshots/theme-blue-login.png) |
 | Red mobile | ![Red phone](screenshots/theme-red-mobile.png) |
 | Blue mobile | ![Blue phone](screenshots/theme-blue-mobile.png) |
+
+### Navigate all configured cameras
+
+![Live camera paging](screenshots/desktop-camera-pages.png)
+
+The Live View can display cameras 1–4, 5–8, 9–12 (and 13–16 if configured) using **Previous** and **Next**. These groups use up to four active substream WebRTC connections at a time to keep the Raspberry Pi 4 responsive, instead of showing disconnected black tiles for cameras 5–12. **Focus** shows a selected camera's full-resolution main stream. The 9/12/16 layout options set the number of cameras included in the wall; they do not mean PiNVR decodes 16 videos simultaneously.
+
+### Discover an ONVIF camera and control supported PTZ
+
+![ONVIF discovery](screenshots/desktop-onvif-discovery.png)
+
+1. Sign in as **Admin**, open **Cameras → ONVIF discovery**, and select a discovered IP. The Add Camera form opens with that address.
+2. Enter the camera's own username/password and RTSP stream paths (usually manufacturer-specific). Select **Test RTSP Connection** before saving.
+3. If the camera supports ONVIF PTZ movement, tick **Enable ONVIF PTZ for this camera** and enter its camera-side ONVIF service port (commonly 80, but varies). Save the camera.
+4. Select the camera under **Live View → PTZ**. Tap an arrow, Zoom, or Stop. Each move is intentionally short to prevent a camera from moving indefinitely when a browser loses connection.
+
+![ONVIF PTZ](screenshots/desktop-ptz-controls.png)
+
+**Compatibility:** These controls implement ONVIF GetCapabilities, GetProfiles and bounded PTZ ContinuousMove/Stop with WS-Security authentication. They are available to **Admins only**. Not all cameras expose a PTZ service or compatible media profile, and some vendors use different HTTP authentication or service endpoints. **PTZ has not yet been tested against your actual cameras**; failures should be reported in the interface rather than assumed to work. No camera credentials are returned to the browser.
+
+### Recording stability fixes
+
+- Motion detection and sensitivity now round-trip through the camera editor. Save, reopen, and confirm the exact settings; the low-resolution substream detector uses the saved values.
+- Continuous recording health checks require **recent video bytes on the external recording drive** in addition to a running FFmpeg process. After a generous startup grace period, stalled recorders are restarted and can generate an alert. This checks file freshness, **not full codec/frame integrity**, so test playback before relying on it.
+- When cleanup deletes old media, PiNVR removes stale motion-event history only when the event's clip and associated JPG burst are both gone.
+- Login attempt bookkeeping is bounded to avoid unbounded memory growth or unexpected exceptions under large numbers of attempted usernames.
 
 ### Test RTSP Connection before saving a camera
 
