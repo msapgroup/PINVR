@@ -56,6 +56,12 @@ def _watch(camera, url, callback, stop):
         try:
             proc = subprocess.Popen(command(url), stdin=subprocess.DEVNULL,
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            with LOCK:
+                current = WORKERS.get(camera['id'])
+                if current and current.get('thread') is threading.current_thread():
+                    current['proc'] = proc
+            if stop.is_set() or STOP.is_set():
+                break
             old = None
             consecutive = 0
             while not STOP.is_set() and not stop.is_set():
@@ -73,6 +79,10 @@ def _watch(camera, url, callback, stop):
         except OSError:
             pass
         finally:
+            with LOCK:
+                current=WORKERS.get(camera['id'])
+                if current and current.get('thread') is threading.current_thread():
+                    current.pop('proc',None)
             if proc:
                 proc.terminate() if proc.poll() is None else None
                 try: proc.wait(timeout=2)
