@@ -26,7 +26,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 import httpx
-from pinvr import relay, motion, storage, rtsp_test, notifications, retention
+from pinvr import relay, motion, storage, rtsp_test, notifications, retention, recording_health
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -47,6 +47,9 @@ LOGIN_WINDOW_SECONDS = 600
 LOGIN_MAX_FAILURES = 8
 LAST_CLEANUP = {"ok": None, "removed": 0, "bytes_freed": 0, "last_run": None}
 RECORDER_FAILURES = {}
+RECORDER_STARTED = {}
+RECORDER_HEALTH = {}
+RECORDER_GRACE_SECONDS = 480
 
 
 def check_login_limit(client, username):
@@ -297,6 +300,7 @@ def camera_row(row):
     d['motion_sensitivity'] = row['motion_sensitivity']
     d['enabled'] = bool(row['enabled'])
     d['active'] = row['id'] in PROCS and PROCS[row['id']].poll() is None
+    d['recording_health'] = RECORDER_HEALTH.get(row['id'], 'offline')
     return d
 
 
@@ -328,6 +332,8 @@ def run_recorder(camera):
     try:
         p=subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL, start_new_session=True)
         PROCS[camera['id']]=p
+        RECORDER_STARTED[camera['id']]=time.time()
+        RECORDER_HEALTH[camera['id']]='starting'
         return True
     except OSError:
         return False
@@ -335,6 +341,8 @@ def run_recorder(camera):
 
 def stop_recorder(cid):
     p=PROCS.pop(cid,None)
+    RECORDER_STARTED.pop(cid,None)
+    RECORDER_HEALTH.pop(cid,None)
     if p and p.poll() is None:
         p.terminate()
         try: p.wait(timeout=4)
@@ -364,9 +372,23 @@ def reconcile():
                     if not started:
                         RECORDER_FAILURES[cam['id']] = RECORDER_FAILURES.get(cam['id'], 0) + 1
                 else:
-                    # A healthy process is not necessarily writing good video;
-                    # use file freshness monitoring in the next hardware test.
-                    pass
+                    start=RECORDER_STARTED.get(cam['id'])
+                    if start is None:
+                        # Handle pre-existing processes in older tests safely.
+                        RECORDER_STARTED[cam['id']]=time.time()
+                        RECORDER_HEALTH[cam['id']]='starting'
+                    elif recording_health.recent_output(RECORDINGS,cam['id'],start):
+                        RECORDER_HEALTH[cam['id']]='writing'
+                    elif time.time()-start >= RECORDER_GRACE_SECONDS:
+                        RECORDER_HEALTH[cam['id']]='stalled'
+                        stop_recorder(cam['id'])
+                        failures=RECORDER_FAILURES.get(cam['id'],0)+1
+                        RECORDER_FAILURES[cam['id']]=failures
+                        if failures==1 or failures%10==0:
+                            alert_destinations('recording',cam['name'])
+                        run_recorder(cam)
+                    else:
+                        RECORDER_HEALTH[cam['id']]='starting'
         for cid in list(PROCS):
             if cid not in active_ids: stop_recorder(cid)
     motion.configure(cams, rtsp_url, trigger_motion)
@@ -828,7 +850,7 @@ def status(u=Depends(require_admin)):
     cpu_temp=None
     try: cpu_temp=round(int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())/1000,1)
     except (OSError,ValueError):pass
-    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'retention':LAST_CLEANUP,'recording_failures':dict(RECORDER_FAILURES),'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
+    return {'storage_mounted':mount,'storage_total':usage.total if usage else 0,'storage_free':usage.free if usage else 0,'recorders':sum(p.poll() is None for p in PROCS.values()),'retention':LAST_CLEANUP,'recording_failures':dict(RECORDER_FAILURES),'recorder_health':dict(RECORDER_HEALTH),'live_relay':relay.is_running(),'temperature_c':cpu_temp,'memory_mb':round(os.sysconf('SC_PAGE_SIZE')*os.sysconf('SC_PHYS_PAGES')/1048576) if hasattr(os,'sysconf') else None}
 
 
 @app.get('/api/clips')
