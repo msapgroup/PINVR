@@ -230,3 +230,14 @@ html[data-theme="blue"] .brand .logo-red{display:none}
 .camera-paging button{min-height:44px;min-width:95px}
 .camera-paging span{color:#dce5ee;font-size:12px;text-align:center;flex:1;overflow-wrap:anywhere}
 @media(max-width:680px){.camera-paging button{min-width:80px;padding:6px 8px}.camera-paging span{font-size:10px}}
+
+#onvifResults{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+#onvifResults[hidden],#ptzPanel[hidden]{display:none!important}
+#onvifResults p{flex-basis:100%;margin:2px 0}
+#onvifResults button{min-height:44px}
+.ptz-control{display:flex;flex-direction:column;gap:10px;margin-top:12px;border-top:1px solid #374654;padding-top:12px}
+.ptz-control p{font-size:11px;margin:0}
+.ptz-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.ptz-buttons button{min-height:44px;padding:7px 4px;border-radius:6px}
+#ptzMessage{font-size:11px;color:#b9c7d3;overflow-wrap:anywhere}
+@media(max-width:680px){.ptz-buttons button{min-height:52px}}
