@@ -54,9 +54,18 @@ def check_login_limit(client, username):
     now = time.monotonic()
     with LOGIN_LOCK:
         if len(LOGIN_ATTEMPTS) > 2000:
-            for k in list(LOGIN_ATTEMPTS):
-                if now - LOGIN_ATTEMPTS[k][-1] > LOGIN_WINDOW_SECONDS:
-                    del LOGIN_ATTEMPTS[k]
+            for k, history in list(LOGIN_ATTEMPTS.items()):
+                if not history or now - history[-1] >= LOGIN_WINDOW_SECONDS:
+                    LOGIN_ATTEMPTS.pop(k, None)
+            # Bound memory even when attackers submit thousands of fresh names.
+            while len(LOGIN_ATTEMPTS) > 2000:
+                LOGIN_ATTEMPTS.pop(next(iter(LOGIN_ATTEMPTS)), None)
+        for ip, history in list(LOGIN_CLIENT_ATTEMPTS.items()):
+            if not history or now - history[-1] >= LOGIN_WINDOW_SECONDS:
+                LOGIN_CLIENT_ATTEMPTS.pop(ip, None)
+        if len(LOGIN_CLIENT_ATTEMPTS) > 2000:
+            for ip in list(LOGIN_CLIENT_ATTEMPTS)[:len(LOGIN_CLIENT_ATTEMPTS)-2000]:
+                LOGIN_CLIENT_ATTEMPTS.pop(ip, None)
         times = [t for t in LOGIN_ATTEMPTS.get(key, ()) if now - t < LOGIN_WINDOW_SECONDS]
         LOGIN_ATTEMPTS[key] = times
         global_times = [t for t in LOGIN_CLIENT_ATTEMPTS.get(client, ()) if now - t < LOGIN_WINDOW_SECONDS]
