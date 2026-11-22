@@ -53,7 +53,7 @@ def _validate_endpoint(url, camera):
     saved = camera["host"].rsplit(':', 1)[0] if ':' in camera["host"] else camera["host"]
     if parsed.scheme != "http" or (parsed.hostname or "").casefold() != saved.casefold():
         raise CameraPTZError("Camera returned an unsafe ONVIF service address")
-    if parsed.username or parsed.password or parsed.fragment or parsed.port is None or parsed.port < 1:
+    if parsed.username or parsed.password or parsed.fragment or (parsed.port is not None and parsed.port < 1):
         raise CameraPTZError("Invalid camera ONVIF service address")
     return url
 
