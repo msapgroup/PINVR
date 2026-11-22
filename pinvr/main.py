@@ -634,6 +634,7 @@ def edit_camera(cid:int,cam:Camera,u=Depends(require_admin)):
             stop_recorder(cid)
             db.execute('UPDATE cameras SET name=?,host=?,main_path=?,sub_path=?,username=?,password=?,recording=?,enabled=?,record_format=?,snapshot_count=?,recording_mode=?,motion_detection=?,motion_sensitivity=?,talk_enabled=?,ptz_enabled=?,onvif_port=? WHERE id=?',(cam.name,cam.host,cam.main_path,cam.sub_path,cam.username,cam.password or old['password'],int(cam.recording),int(cam.enabled),cam.record_format,cam.snapshot_count,cam.recording_mode,int(cam.motion_detection),cam.motion_sensitivity,int(cam.talk_enabled),int(cam.ptz_enabled),cam.onvif_port,cid))
         reconcile()
+        onvif_ptz.CACHE.clear()
         refresh_relay()
     return {'id':cid}
 
@@ -647,6 +648,7 @@ def delete_camera(cid:int,u=Depends(require_admin)):
     with connect() as db:
         db.execute('DELETE FROM motion_tokens WHERE camera_id=?',(cid,))
     reconcile()
+    onvif_ptz.CACHE.clear()
     refresh_relay()
     return {'ok':True,'note':'Recorded clips are preserved on disk'}
 
