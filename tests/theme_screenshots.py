@@ -40,6 +40,7 @@ fixture = """
 window.__PINVR_ROLE__ = ROLE;
 window.fetch=async (url, options={})=>{
  const path=String(url);
+ if (path==='/api/cameras' && options.method==='POST') window.__SAVED_CAMERA__=JSON.parse(options.body);
  let data =
  path.includes('/api/me') ? {username:window.__PINVR_ROLE__==='admin'?'Admin':'FamilyViewer',role:window.__PINVR_ROLE__,talk_allowed:window.__PINVR_ROLE__==='admin',must_change:false} :
  path.includes('/api/onvif/discover') ? {devices:[{ip:'192.168.1.108',service_urls:['http://192.168.1.108/onvif/device_service']}]} :
@@ -168,6 +169,11 @@ with sync_playwright() as p:
     desktop.locator(".rtsp-stream-row").first.wait_for()
     # Include branded header and the device editor, not just an isolated widget.
     screenshot(desktop,"rtsp-connection-test.png",full=True)
+    desktop.locator('#cameraForm button[type="submit"]').click()
+    desktop.wait_for_timeout(120)
+    save=desktop.evaluate("window.__SAVED_CAMERA__")
+    assert save["motion_detection"] is True and save["motion_sensitivity"]==7, save
+    assert save["onvif_port"]==80 and save["ptz_enabled"] is False, save
 
     go(desktop,"settings")
     screenshot(desktop,"desktop-system-health.png",full=True)
