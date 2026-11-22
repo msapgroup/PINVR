@@ -91,7 +91,10 @@ def boot(browser, role="admin", mobile=False):
     page.set_content(html)
     page.evaluate(fixture.replace('window.__PINVR_ROLE__ = ROLE;', 'window.__PINVR_ROLE__ = '+json.dumps(role)+';'))
     page.add_script_tag(content=js)
-    page.locator("#console").wait_for(state="visible", timeout=7000)
+    page.wait_for_timeout(900)
+    if not page.locator("#console").is_visible():
+        raise RuntimeError("PiNVR dashboard did not open; browser errors="+repr(errors)+
+                           " login status="+repr(page.locator("#authError").inner_text()))
     page.wait_for_timeout(160)
     assert not errors, f"{role} JS error: {errors}"
     assert page.locator(".header .logo-red").is_visible()
