@@ -31,7 +31,7 @@ cameras = [{"id":i+1, "name":name, "host":f"192.168.1.{101+i}",
             "sub_path":"/Streaming/Channels/102", "record_format":"mp4",
             "recording_mode":"motion" if i<4 else "continuous",
             "snapshot_count":3, "motion_detection":i<4,
-            "motion_sensitivity":5, "talk_enabled":i==0}
+            "motion_sensitivity":5, "talk_enabled":i==0, "ptz_enabled":i==0, "onvif_port":80}
            for i,name in enumerate(names)]
 
 # Mock ONLY the API: the real PiNVR UI still runs, including permissions,
@@ -42,6 +42,7 @@ window.fetch=async (url, options={})=>{
  const path=String(url);
  let data =
  path.includes('/api/me') ? {username:window.__PINVR_ROLE__==='admin'?'Admin':'FamilyViewer',role:window.__PINVR_ROLE__,talk_allowed:window.__PINVR_ROLE__==='admin',must_change:false} :
+ path.includes('/api/onvif/discover') ? {devices:[{ip:'192.168.1.108',service_urls:['http://192.168.1.108/onvif/device_service']}]} :
  path.includes('/api/cameras/test-connection') ? {ok:true, saved:false, tested:true, streams:[
     {stream:'main',ok:true,codec:'h264',width:1920,height:1080,fps:25,audio:['aac'],message:'H.264 detected — recommended for browser viewing.'},
     {stream:'substream',ok:true,codec:'h264',width:640,height:360,fps:15,audio:[],message:'H.264 detected — recommended for browser viewing.'}
@@ -126,6 +127,15 @@ with sync_playwright() as p:
         screenshot(desktop,f"theme-{color}-desktop.png",full=True)
     theme(desktop,"red")
     screenshot(desktop,"desktop-live.jpg",full=True)
+    desktop.locator("#nextCameraPage").click()
+    assert "Group 2" in desktop.locator("#cameraPageLabel").inner_text()
+    assert desktop.locator("#cameraGrid video").count() <= 4
+    screenshot(desktop,"desktop-camera-pages.png",full=True)
+    desktop.locator("#prevCameraPage").click()
+    desktop.locator("#ptzInfo").click()
+    assert desktop.locator("#ptzPanel").is_visible()
+    screenshot(desktop,"desktop-ptz-controls.png",full=True)
+    desktop.locator("#ptzInfo").click()
     desktop.evaluate("document.querySelector('#passwordReminder').hidden=false")
     screenshot(desktop,"desktop-password-reminder.jpg")
     desktop.evaluate("document.querySelector('#passwordReminder').hidden=true")
@@ -133,6 +143,11 @@ with sync_playwright() as p:
     go(desktop,"playback")
     screenshot(desktop,"desktop-playback.jpg",full=True)
     go(desktop,"devices")
+    desktop.locator("#discover").click()
+    desktop.locator("[data-onvif-host]").first.wait_for()
+    screenshot(desktop,"desktop-onvif-discovery.png",full=True)
+    desktop.locator("[data-onvif-host]").first.click()
+    assert desktop.locator("#camHost").input_value()=="192.168.1.108"
     desktop.locator("#addCamera").click()
     desktop.locator("#camName").fill("Front Driveway")
     desktop.locator("#camHost").fill("192.168.1.101")
@@ -215,6 +230,7 @@ expected={
  "alerts-notifications-settings.png","desktop-password-reminder.jpg",
  "desktop-storage-retention.png",
  "desktop-system-health.png",
+ "desktop-camera-pages.png","desktop-onvif-discovery.png","desktop-ptz-controls.png",
  "mobile-viewer-playback.jpg"
 }
 missing=[name for name in expected if not (OUT/name).exists()]
